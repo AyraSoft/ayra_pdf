@@ -53,7 +53,7 @@ void PDFComponent::loadDocument(const juce::String filePath)
 
 bool PDFComponent::thereIsADocumentLoaded() const
 {
-    pdfViewComponent->thereIsADocumentLoaded();
+    return pdfViewComponent->thereIsADocumentLoaded();
 }
 
 void PDFComponent::setPageNumber(const int pageNumber)
