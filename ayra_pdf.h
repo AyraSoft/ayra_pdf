@@ -29,6 +29,6 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
-#include "pdf_component/PdfComponent.h"
+#include "pdf_component/PDFComponent.h"
 
 

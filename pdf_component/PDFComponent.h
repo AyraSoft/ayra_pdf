@@ -83,9 +83,11 @@ public:
 private:
     
 #if JUCE_IOS || JUCE_MAC
-    std::unique_ptr<MacPDFViewComponent> pdfViewComponent;
+    std::unique_ptr<MacPDFViewComponent>     pdfViewComponent;
 #elif JUCE_WINDOWS
+    std::unique_ptr<WindowsPDFViewComponent> pdfViewComponent;
 #elif JUCE_ANDROID || JUCE_LINUX
+    std::unique_ptr<LinuxPDFViewComponent>   pdfViewComponent;
 #endif
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDFComponent)

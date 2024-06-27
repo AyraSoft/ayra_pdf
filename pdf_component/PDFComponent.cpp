@@ -21,7 +21,9 @@ PDFComponent::PDFComponent()
 #if JUCE_IOS || JUCE_MAC
     pdfViewComponent.reset(new MacPDFViewComponent {});
 #elif JUCE_WINDOWS
+    pdfViewComponent.reset(new WindowsPDFViewComponent {});
 #elif JUCE_ANDROID || JUCE_LINUX
+    pdfViewComponent.reset(new LinuxPDFViewComponent {});
 #endif
     
     addAndMakeVisible(pdfViewComponent.get());
