@@ -1,0 +1,33 @@
+# PDFium - binari precompilati (scarica con scripts/setup_pdfium.sh)
+# NOTE: third_party/pdfium/include/ E' in git (headers necessari per compilare)
+
+# macOS
+third_party/pdfium/mac/*.a
+third_party/pdfium/mac/*.dylib
+
+# Windows
+third_party/pdfium/win/*.lib
+third_party/pdfium/win/*.dll
+third_party/pdfium/win/*.pdb
+
+# Linux
+third_party/pdfium/linux/*.a
+third_party/pdfium/linux/*.so
+third_party/pdfium/linux/*.so.*
+
+# iOS
+third_party/pdfium/ios/*.a
+
+# Android
+third_party/pdfium/android/**/*.so
+
+# File temporanei download
+third_party/.pdfium_download_tmp/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/

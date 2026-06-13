@@ -13,17 +13,11 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
-// MAC TODO:
-// TODO: 🔴 non funziona l'handlePoint dello zoom
-// TODO: 🔴 fare le gesture
-// TODO: 🔴 fare gli handle per quando e' piu' grande della view
-// TODO: 🔴 fare l'inspector per cercare le pagine velocemente
-
-// WINDOWS TODO:
-// TODO: 🔴 tutto
-
-// LINUX TODO:
-// TODO: 🔴 tutto
+/** @deprecated Usa ayra::PdfViewComponent invece di PDFComponent.
+ *  Questo file rimane per backward compatibility.
+ *  Verra' rimosso nella Fase 5 del refactoring di ayra_pdf.
+ *  @see ayra_PdfViewComponent.h
+ */
 
 namespace ayra
 {

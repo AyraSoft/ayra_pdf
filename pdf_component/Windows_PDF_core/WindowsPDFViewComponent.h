@@ -1,18 +1,22 @@
 /*
      ______  __    __  ______   ______
     |      \|  \  |  \/      \ |      \
-     \▓▓▓▓▓▓\ ▓▓  | ▓▓  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\
-     /      ▓▓ ▓▓  | ▓▓ ▓▓   \▓▓/      ▓▓   Copyright 2023
-    |  ▓▓▓▓▓▓▓ ▓▓__/ ▓▓ ▓▓     |  ▓▓▓▓▓▓▓   Ayra Soft
-     \▓▓    ▓▓\▓▓    ▓▓ ▓▓      \▓▓    ▓▓   www.ayra.live
-      \▓▓▓▓▓▓▓_\▓▓▓▓▓▓▓\▓▓       \▓▓▓▓▓▓▓
-             |  \__| ▓▓
-              \▓▓    ▓▓
-                \▓▓▓▓▓▓
-    
+     \######\ ##  | ##  ######\ \######\
+     /      ## ##  | ## ##   \##/      ##   Copyright 2023-2026
+    |  #######\ ##__/ ## ##     |  #######   Ayra Soft
+     \##    ##\##    ## ##      \##    ##   www.ayra.live
+      \#######_\######\##       \#######
+             |  \__| ##
+              \##    ##
+                \######
+
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
+/** @deprecated LEGACY - rendering finto (mostra rettangoli grigi).
+ *  Verra' sostituito da ayra::PdfiumRenderer nella Fase 3 di ayra_pdf.
+ *  @see renderer/pdfium/ayra_PdfiumRenderer.h
+ */
 
 namespace ayra
 {

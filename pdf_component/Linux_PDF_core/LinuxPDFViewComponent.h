@@ -1,18 +1,22 @@
 /*
      ______  __    __  ______   ______
     |      \|  \  |  \/      \ |      \
-     \▓▓▓▓▓▓\ ▓▓  | ▓▓  ▓▓▓▓▓▓\ \▓▓▓▓▓▓\
-     /      ▓▓ ▓▓  | ▓▓ ▓▓   \▓▓/      ▓▓   Copyright 2023
-    |  ▓▓▓▓▓▓▓ ▓▓__/ ▓▓ ▓▓     |  ▓▓▓▓▓▓▓   Ayra Soft
-     \▓▓    ▓▓\▓▓    ▓▓ ▓▓      \▓▓    ▓▓   www.ayra.live
-      \▓▓▓▓▓▓▓_\▓▓▓▓▓▓▓\▓▓       \▓▓▓▓▓▓▓
-             |  \__| ▓▓
-              \▓▓    ▓▓
-                \▓▓▓▓▓▓
-    
+     \######\ ##  | ##  ######\ \######\
+     /      ## ##  | ## ##   \##/      ##   Copyright 2023-2026
+    |  #######\ ##__/ ## ##     |  #######   Ayra Soft
+     \##    ##\##    ## ##      \##    ##   www.ayra.live
+      \#######_\######\##       \#######
+             |  \__| ##
+              \##    ##
+                \######
+
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
+/** @deprecated LEGACY - stub senza rendering reale.
+ *  Verra' sostituito da ayra::PdfiumRenderer nella Fase 3 di ayra_pdf.
+ *  @see renderer/pdfium/ayra_PdfiumRenderer.h
+ */
 
 namespace ayra
 {
@@ -110,40 +114,7 @@ public:
         if (pdfDocument == nullptr) { return -1; }
         return currentPage;
     }
-    
-    void setPageNumber(const int pageNumber)
-    {
-//        if (pdfView.pdfDocument != NULL)
-//        {
-//            if (pageNumber >= 1 && pageNumber <= getTotPagesNum())
-//            {
-//                pdfView.currentPage = pageNumber;
-//                
-//                pdfView.zoomLevel = 1.0f;
-//                pdfView.topLeftOrigin = CGPointMake(0.0, 0.0);
-//                
-//                [pdfView setNeedsDisplay:YES];
-//            }
-//        }
-    }
-    
-    int getTotPagesNum() const
-    {
-//        if (pdfView.pdfDocument != NULL)
-//        {
-//            return (int)CGPDFDocumentGetNumberOfPages(pdfView.pdfDocument);
-//        }
-//        
-        return -1;
-    }
-    
-    int getCurrentPageOnScreen() const
-    {
-//        if (pdfView.pdfDocument == NULL) { return -1; }
-//        return (int)pdfView.currentPage;
-        return -1;
-    }
-    
+
     float getDocumentWidth() const
     {
         if (pdfDocument != nullptr && currentPageBounds.getWidth() > 0)
