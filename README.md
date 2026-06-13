@@ -28,7 +28,7 @@ ayra_pdf/
 │   ├── ayra_PdfViewComponent.h/.cpp   <- widget principale, sostituto di PDFComponent
 │   └── look_and_feel/
 │       ├── ayra_PdfLookAndFeelMethods.h
-│       └── ayra_PdfDefaultLookAndFeel.h/.cpp
+│       └── ayra_PdfDefaultLookAndFeel.h    <- implementazione inline nell'header (nessun .cpp)
 │
 ├── third_party/pdfium/                <- PDFium (Fase 3)
 │   ├── include/                       <- headers (in git)
@@ -77,6 +77,8 @@ L'engine non include mai header GUI. Un agente server-side o un renderer offline
 
 `*` = richiede PDFium installato via `scripts/setup_pdfium.sh/.ps1` — implementazione in Fase 3.
 
+> **Stato reale (giugno 2026):** la matrice descrive il design target dell'architettura v2, **non** lo stato corrente. L'engine `PdfDocument`, i renderer v2 (`MacPdfRenderer`, `PdfiumRenderer`) e il widget v2 (`PdfViewComponent`) sono **skeleton** (tutti i metodi sono `jassertfalse` / `return {}`). L'unico path funzionante oggi e' il **LEGACY `pdf_component/PDFComponent`**, attivo **solo su macOS/iOS** via `MacPDFComponent.mm` (CoreGraphics). Vedi sezione "Fasi di Sviluppo" per il dettaglio.
+
 ---
 
 ## Quick Start
@@ -112,7 +114,7 @@ if (doc.open (juce::File ("/path/to/manual.pdf")))
 // --- Apertura da memoria ---
 juce::MemoryBlock block;
 // ... popola block ...
-doc.openFromMemoryBlock (block.getData(), (int) block.getSize());
+doc.open (block.getData(), block.getSize());
 ```
 
 ### PdfViewComponent — widget interattivo
@@ -157,30 +159,30 @@ class PdfDocument
 {
 public:
     // Apertura
-    bool open (const juce::File& file) noexcept;
-    bool openFromMemoryBlock (const void* data, int sizeInBytes) noexcept;
+    [[nodiscard]] bool open (const juce::File& file) noexcept;
+    [[nodiscard]] bool open (const void* data, size_t sizeBytes) noexcept;
     void close() noexcept;
 
     // Stato
     [[nodiscard]] bool isOpen() const noexcept;
     [[nodiscard]] int  getPageCount() const noexcept;
 
-    // Rendering
+    // Rendering (non-const: puo' aggiornare lo stato interno del renderer)
     // scale: 1.0 = 72dpi nativo, 2.0 = 144dpi HiDPI
-    [[nodiscard]] juce::Image renderPage (int pageIndex, float scale = 1.0f) const noexcept;
+    [[nodiscard]] juce::Image renderPage (int pageIndex, float scale = 1.0f) noexcept;
 
     // Navigazione / metadati
     [[nodiscard]] PdfPage getPage (int pageIndex) const noexcept;
 
-    // Ricerca testo (message thread)
-    [[nodiscard]] juce::Array<PdfSearchResult> findText (const juce::String& query) const;
+    // Ricerca testo (message thread) — pageIndex = -1 cerca in tutto il documento
+    [[nodiscard]] juce::Array<PdfSearchResult> findText (const juce::String& query, int pageIndex = -1) noexcept;
 
     // Estrazione testo UTF-8 (message thread)
-    [[nodiscard]] juce::String extractText (int pageIndex) const;
+    [[nodiscard]] juce::String extractText (int pageIndex) noexcept;
 
     // Serializzazione
-    bool save (const juce::File& file) const noexcept;
-    bool saveToMemoryBlock (juce::MemoryBlock& dest) const noexcept;
+    [[nodiscard]] bool save (const juce::File& file) const noexcept;
+    [[nodiscard]] bool saveToMemoryBlock (juce::MemoryBlock& dest) const noexcept;
 };
 ```
 
@@ -193,7 +195,8 @@ struct PdfPage
     juce::Rectangle<float>  bounds   {};      // larghezza/altezza in punti PDF (1pt = 1/72")
     int                     rotation {};      // 0, 90, 180, 270 gradi
 
-    [[nodiscard]] float getAspectRatio() const noexcept;
+    // true se index >= 0 e bounds non vuote
+    [[nodiscard]] bool isValid() const noexcept;
 };
 ```
 
@@ -387,11 +390,11 @@ endif()
 
 **Download:** eseguire `scripts/setup_pdfium.sh` (macOS/Linux) o `scripts/setup_pdfium.ps1` (Windows) dopo aver clonato il repository. Vedi `SETUP.md` per i dettagli.
 
-**Init PDFium:**
-`FPDF_InitLibrary()` viene chiamato una sola volta per processo tramite `std::call_once` interno a `PdfiumRenderer`. Non e' necessario chiamarlo manualmente.
+**Init PDFium (design Fase 3 — non ancora implementato):**
+`PdfiumRenderer` e' attualmente uno skeleton: tutti i metodi sono `jassertfalse` / `return {}`. Il design previsto per la Fase 3 e' chiamare `FPDF_InitLibrary()` una sola volta per processo (con ref-count) e `FPDF_DestroyLibrary()` quando il count torna a zero — vedi i `TODO: Fase 3` in `renderer/pdfium/ayra_PdfiumRenderer.cpp`. Nessuna init e' eseguita oggi.
 
-**Thread safety:**
-PDFium non e' thread-safe a livello di documento. Ogni `PdfDocument` possiede il proprio `FPDF_DOCUMENT` e non condivide stato con altre istanze. Chiamate parallele su istanze distinte sono sicure.
+**Thread safety (design Fase 3):**
+PDFium non e' thread-safe a livello di documento. Il design previsto e' che ogni `PdfDocument` possieda il proprio `FPDF_DOCUMENT` senza condividere stato con altre istanze, cosi' che chiamate parallele su istanze distinte siano sicure. Non ancora implementato (Fase 3).
 
 **Aggiornamento versione:**
 Modificare `PDFIUM_VERSION` in `scripts/setup_pdfium.sh` / `setup_pdfium.ps1`, poi rieseguire lo script. I binari vengono scaricati da GitHub Releases di `pdfium-binaries`.
