@@ -83,12 +83,6 @@ float PDFComponent::getDocumentHeight() const
     return pdfViewComponent->getDocumentHeight();
 }
 
-//float PDFComponent::getCurrentPageSizeRatio() const
-//{
-//    if 
-//    return pdfViewComponent->getCurrentPageSizeRatio();
-//}
-
 float PDFComponent::getCurrentPageZoom() const
 {
     return pdfViewComponent->getCurrentPageZoom();

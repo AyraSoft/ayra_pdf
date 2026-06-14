@@ -256,10 +256,8 @@ public:
             // Calculate the position to draw the PDF
             float x = topLeftOrigin.getX();
             float y = topLeftOrigin.getY();
-            float width = pdfBitmap->getWidth() * zoomLevel;
-            float height = pdfBitmap->getHeight() * zoomLevel;
-            
-            g.drawImageTransformed(*pdfBitmap, 
+
+            g.drawImageTransformed(*pdfBitmap,
                                    juce::AffineTransform::scale(zoomLevel).translated(x, y));
         }
     }

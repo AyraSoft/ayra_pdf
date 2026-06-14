@@ -55,8 +55,7 @@ public:
     
     float getDocumentWidth() const; // restituisce la vera larghezza del documento
     float getDocumentHeight() const; // restituisce la vera altezza del documento
-//    float getCurrentPageSizeRatio() const;
-    
+
     float getCurrentPageZoom() const;
     void setCurrentPageZoom(const float zoom, const juce::Point<float> handlePoint);
     inline void setCurrentPageZoom(const float zoom, const juce::Point<int> handlePoint) { setCurrentPageZoom(zoom, handlePoint.toFloat()); }
