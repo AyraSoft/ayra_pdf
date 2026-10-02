@@ -30,7 +30,7 @@ namespace ayra
  *  e gli header in:
  *    third_party/pdfium/include/
  *
- *  P01 implementa lifecycle/load/metadata; P02 e P03 completano save/render/text.
+ *  P01-P03 sono implementati staticamente: lifecycle/load/metadata, save/render e text/search.
  *
  *  PDFium non e' thread-safe: il backend serializza internamente tutte le chiamate
  *  FPDF con un mutex process-wide condiviso tra tutte le istanze.

@@ -44,9 +44,9 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | **done (static)** |
 | **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | **done (static)** |
 | **P02** | PDFium | Render + save file/memory | P01 | **done (static)** |
-| **P03** | PDFium | Extract/search con bounds esatti | P01 | **in progress** |
-| **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | pending |
-| **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | pending |
+| **P03** | PDFium | Extract/search con bounds esatti | P01 | **done (static)** |
+| **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | **done (static)** |
+| **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | **in progress** |
 | **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | pending |
 | **H01** | Module contract | Rendere esplicito e corretto il contratto headless/dependencies JUCE | D02 | pending |
 | **C01** | Current-only cutover | Rimuovere `pdf_component/`, include legacy e ogni alias/fallback | W02,H01 | pending |
@@ -370,6 +370,19 @@ con M04 Apple, senza parsing testuale proprietario.
 - static diff audit completato;
 - fixture Unicode/Type0/CMap/multiline + stress serializzazione: **external pending**.
 
+
+**Esito P03 (2026-10-02)**: `extractText` usa `FPDFText_GetText` con buffer bounded
+UTF-16LE e conversione code-unit per code-unit verso JUCE, senza aliasing tra
+`FPDF_WCHAR` e `wchar_t/int16`. `findText` usa ricerca PDFium case-insensitive,
+estrae il testo reale del match e calcola i bounds tramite `FPDFText_CountRects/GetRect`,
+unendo i rect multiline in PDF page space. Overflow dei risultati = failure atomico.
+Tutti i page/text/search handle hanno teardown RAII sotto la lock process-wide.
+Nel renderer PDFium non restano `jassertfalse` o TODO.
+
+**Esito D02**: `PdfDocument` delega ora a backend completi staticamente su Apple e
+Win/Linux/Android. Questa e' completezza del codice, non certificazione runtime:
+build/link/deployment e fixture cross-platform restano **external pending**.
+
 ---
 
 ## Tabella riepilogativa
@@ -384,7 +397,7 @@ con M04 Apple, senza parsing testuale proprietario.
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.mm` | ✅ M01-M04 completi staticamente | macOS/iOS | 2 |
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
-| `renderer/pdfium/ayra_PdfiumRenderer.cpp` | 🟠 P01-P02 completi; P03 in progress | Win/Linux/Android | 3 |
+| `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ✅ P01-P03 completi staticamente | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
 | `widgets/ayra_PdfViewComponent.cpp` | ⚠️ parziale (setDocument funziona, resto stub) | tutte | 5 |
 | `widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h` | ✅ completo | tutte | 1 |

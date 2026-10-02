@@ -93,127 +93,31 @@ La verifica runtime deve usare color bars + marker ai quattro angoli + /Rotate 0
 
 ---
 
-## findText()
+## findText() — implementazione corrente
 
-PDFium usa coordinate con Y-up (origine in basso a sinistra della pagina). `PdfSearchResult.bounds`
-usa PDF user space (punti, origine in basso a sinistra). La conversione Y non e' necessaria se
-manteniamo le coordinate in PDF user space — e' `PdfViewComponent` che le convertira' in
-screen-space durante la visualizzazione.
+P03 usa `FPDFText_FindStart/FindNext` con flags `0` (case-insensitive). La query viene
+convertita in UTF-16LE code-unit per code-unit, preservando surrogate pair.
 
-```cpp
-juce::Array<PdfSearchResult> PdfiumRenderer::findText (const juce::String& query, int pageIndex) noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return {};
-#else
-    juce::Array<PdfSearchResult> results;
-    if (impl->document == nullptr || query.isEmpty()) { return results; }
+Per ogni match:
+- index/count validati contro `FPDFText_CountChars`;
+- budget globale risultati controllato prima di pubblicare;
+- `FPDFText_CountRects/GetRect` calcola i rettangoli del range;
+- i rettangoli multiline vengono uniti in un unico `PdfSearchResult.bounds`;
+- il testo reale del match viene riletto con `FPDFText_GetText`;
+- bounds non finite/degenerate o errori API causano failure atomico, mai risultato parziale.
 
-    const int startPage = (pageIndex >= 0) ? pageIndex : 0;
-    const int endPage   = (pageIndex >= 0) ? pageIndex : FPDF_GetPageCount (impl->document) - 1;
-
-    // Converti la query in UTF-16LE per PDFium
-    juce::MemoryBlock utf16Query;
-    const juce::CharPointer_UTF16 queryUtf16 = query.toUTF16();
-    // UTF-16 terminator e' 2 byte (0x0000)
-    size_t utf16Len = 0;
-    for (auto p = queryUtf16; *p != 0; ++p) { ++utf16Len; }
-    utf16Query.replaceAll (queryUtf16.getAddress(), (utf16Len + 1) * sizeof (juce::juce_wchar));
-
-    for (int p = startPage; p <= endPage; ++p)
-    {
-        FPDF_PAGE page = FPDF_LoadPage (impl->document, p);
-        if (page == nullptr) { continue; }
-
-        FPDF_TEXTPAGE textPage = FPDFText_LoadPage (page);
-        if (textPage == nullptr) { FPDF_ClosePage (page); continue; }
-
-        FPDF_SCHHANDLE search = FPDFText_FindStart (
-            textPage,
-            reinterpret_cast<const unsigned short*>(utf16Query.getData()),
-            0,   // flags = 0 (case-insensitive)
-            0);  // startIndex = 0
-
-        while (FPDFText_FindNext (search))
-        {
-            const int matchIndex = FPDFText_GetSchResultIndex (search);
-            const int matchCount = FPDFText_GetSchCount (search);
-
-            // Calcola bounding box come unione delle char box
-            double left = 1e9, top = -1e9, right = -1e9, bottom = 1e9;
-            for (int i = matchIndex; i < matchIndex + matchCount; ++i)
-            {
-                double cl, ct, cr, cb;
-                FPDFText_GetCharBox (textPage, i, &cl, &cr, &cb, &ct);
-                // Nota: PDFium inverte top/bottom rispetto a cosa ci si aspetta
-                // cl = left, cr = right, cb = bottom (y-up), ct = top (y-up)
-                left   = std::min (left,   cl);
-                bottom = std::min (bottom, cb);
-                right  = std::max (right,  cr);
-                top    = std::max (top,    ct);
-            }
-
-            PdfSearchResult result;
-            result.pageIndex = p;
-            result.text      = query;
-            // Bounds in PDF user space (Y-up, origine in basso a sinistra)
-            result.bounds    = { (float)left,   (float)bottom,
-                                 (float)(right - left), (float)(top - bottom) };
-            results.add (result);
-        }
-
-        FPDFText_FindClose (search);
-        FPDFText_ClosePage (textPage);
-        FPDF_ClosePage (page);
-    }
-
-    return results;
-#endif
-}
-```
+Tutti gli handle page/text/search restano sotto la lock process-wide P01.
 
 ---
 
-## extractText()
+## extractText() — implementazione corrente
 
-`FPDFText_GetText` produce UTF-16LE. `juce::String` puo' essere costruito da UTF-16
-tramite `juce::CharPointer_UTF16`.
+`FPDFText_CountChars` viene bounded da `detail::maxTextCodeUnitsPerPage`; il testo viene
+estratto con `FPDFText_GetText` in UTF-16LE e convertito verso `juce::String` tramite
+buffer separati PDFium/JUCE. Questo evita aliasing tra `FPDF_WCHAR` e il tipo nativo
+`CharPointer_UTF16::CharType` (che su Windows puo' essere `wchar_t`).
 
-```cpp
-juce::String PdfiumRenderer::extractText (int pageIndex) noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return {};
-#else
-    if (impl->document == nullptr) { return {}; }
-
-    FPDF_PAGE page = FPDF_LoadPage (impl->document, pageIndex);
-    if (page == nullptr) { return {}; }
-
-    FPDF_TEXTPAGE textPage = FPDFText_LoadPage (page);
-    if (textPage == nullptr) { FPDF_ClosePage (page); return {}; }
-
-    const int charCount = FPDFText_CountChars (textPage);
-    if (charCount <= 0)
-    {
-        FPDFText_ClosePage (textPage);
-        FPDF_ClosePage (page);
-        return {};
-    }
-
-    // Buffer UTF-16LE: (charCount + 1) caratteri * 2 byte/char
-    juce::HeapBlock<unsigned short> buf ((size_t)(charCount + 1));
-    FPDFText_GetText (textPage, 0, charCount, buf.getData());
-    buf[charCount] = 0; // null terminator
-
-    FPDFText_ClosePage (textPage);
-    FPDF_ClosePage (page);
-
-    return juce::String (juce::CharPointer_UTF16 (
-        reinterpret_cast<const juce::CharPointer_UTF16::CharType*>(buf.getData())));
-#endif
-}
-```
+Il risultato finale e' anche bounded in UTF-8 bytes dalla policy canonica condivisa.
 
 ---
 
@@ -322,9 +226,9 @@ void PdfiumRenderer::close() noexcept
 - [x] `getPageCount` — `FPDF_GetPageCount` serializzato
 - [x] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
 - [x] `renderPage` — bounded direct bitmap; Android reverse-byte-order flag
-- [ ] `extractText` — `FPDFText_LoadPage` + `FPDFText_GetText` + UTF-16LE -> juce::String
-- [ ] `findText` — `FPDFText_FindStart/Next/Close` + `FPDFText_GetCharBox`
-- [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
+- [x] `extractText` — bounded UTF-16LE -> JUCE, alias-safe
+- [x] `findText` — case-insensitive + CountRects/GetRect + exact match text
+- [x] Nessun `jassertfalse`/TODO residuo in `PdfiumRenderer.cpp`
 - [x] Lifecycle + lock process-wide su ogni API PDFium; init 0->1 / destroy 1->0
 - [ ] Test manuale Windows: aprire PDF, renderizzare pagina, verificare colori corretti
 - [ ] Test round-trip: `loadFromFile` -> `saveToMemory` -> `loadFromMemory` -> `renderPage` deve produrre immagine identica

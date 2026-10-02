@@ -412,8 +412,8 @@ e' piu' la source of truth dell'avanzamento. Il piano operativo corrente usa mic
 
 Sintesi al 2026-10-02:
 - renderer Apple v2 M01-M04: **done (static)**;
-- `PdfDocument`: D01 **done (static)**;
-- renderer PDFium: P01 in progress;
+- `PdfDocument`: D02 **done (static)** su tutti i backend dichiarati;
+- renderer PDFium: P01-P03 **done (static)**;
 - `PdfViewComponent`: parziale;
 - legacy operativo: macOS/AppKit soltanto, destinato a rimozione current-only;
 - iOS v2: codice backend presente ma integrazione end-to-end da verificare esternamente;
