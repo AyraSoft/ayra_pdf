@@ -3,13 +3,66 @@ namespace ayra::tests
 
 #ifndef AYRA_PDF_HEADLESS
 using LegacyLoadDocumentSignature = void (PDFComponent::*) (juce::String);
+using LegacyDocumentLoadedSignature = bool (PDFComponent::*) () const;
+using LegacyIntGetterSignature = int (PDFComponent::*) () const;
+using LegacyPageSetterSignature = void (PDFComponent::*) (int);
+using LegacyFloatGetterSignature = float (PDFComponent::*) () const;
+using LegacyZoomSetterSignature = void (PDFComponent::*) (float, juce::Point<float>);
+using LegacyPointGetterSignature = juce::Point<float> (PDFComponent::*) () const;
+using LegacyPointSetterSignature = void (PDFComponent::*) (juce::Point<float>);
+using LegacyBoundsGetterSignature = juce::Rectangle<float> (PDFComponent::*) () const;
 using LegacyExportDocumentSignature = void (PDFComponent::*) (juce::String, juce::String) const;
+using LegacyLoadMemorySignature = void (PDFComponent::*) (const void*, int);
+using LegacySaveMemorySignature = void (PDFComponent::*) (juce::MemoryBlock&);
 
 static_assert (std::is_same_v<PDFComponent, PdfViewComponent>);
-static_assert (std::is_same_v<decltype (static_cast<LegacyLoadDocumentSignature> (&PDFComponent::loadDocument)),
-                              LegacyLoadDocumentSignature>);
-static_assert (std::is_same_v<decltype (static_cast<LegacyExportDocumentSignature> (&PDFComponent::exportCurrentDocument)),
-                              LegacyExportDocumentSignature>);
+static_assert (std::is_base_of_v<juce::Component, PDFComponent>);
+
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyLoadDocumentSignature> (&PDFComponent::loadDocument)),
+    LegacyLoadDocumentSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyDocumentLoadedSignature> (&PDFComponent::thereIsADocumentLoaded)),
+    LegacyDocumentLoadedSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyIntGetterSignature> (&PDFComponent::getTotPagesNum)),
+    LegacyIntGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyIntGetterSignature> (&PDFComponent::getCurrentPageOnScreen)),
+    LegacyIntGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyPageSetterSignature> (&PDFComponent::setPageNumber)),
+    LegacyPageSetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyFloatGetterSignature> (&PDFComponent::getDocumentWidth)),
+    LegacyFloatGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyFloatGetterSignature> (&PDFComponent::getDocumentHeight)),
+    LegacyFloatGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyFloatGetterSignature> (&PDFComponent::getCurrentPageZoom)),
+    LegacyFloatGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyZoomSetterSignature> (&PDFComponent::setCurrentPageZoom)),
+    LegacyZoomSetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyPointGetterSignature> (&PDFComponent::getCurrentPageTopLeftPosition)),
+    LegacyPointGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyPointSetterSignature> (&PDFComponent::setCurrentPageTopLeftPosition)),
+    LegacyPointSetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyBoundsGetterSignature> (&PDFComponent::getCurrentPageBounds)),
+    LegacyBoundsGetterSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyExportDocumentSignature> (&PDFComponent::exportCurrentDocument)),
+    LegacyExportDocumentSignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacyLoadMemorySignature> (&PDFComponent::loadDocumentFromMemoryBlock)),
+    LegacyLoadMemorySignature>);
+static_assert (std::is_same_v<
+    decltype (static_cast<LegacySaveMemorySignature> (&PDFComponent::getMemoryBlockFromDocument)),
+    LegacySaveMemorySignature>);
 #endif
 
 namespace

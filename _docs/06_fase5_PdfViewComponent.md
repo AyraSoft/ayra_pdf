@@ -111,3 +111,10 @@ la posizione top-left resta vuota e il relativo setter non modifica stato.
 - query rapida e cambio pagina durante search;
 - distruzione widget durante render/search;
 - LookAndFeel custom.
+
+
+## Legacy API compile guard
+
+The module test suite statically checks the complete historical `PDFComponent` method surface
+(load, navigation, geometry, zoom/pan, export and memory I/O), in addition to the type alias itself.
+This makes source-compatibility regression a compile-time failure instead of a consumer-only discovery.
