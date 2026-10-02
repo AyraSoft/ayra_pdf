@@ -83,3 +83,5 @@ field. Adding/changing an ABI therefore requires one manifest change, not synchr
 ### Provisioning asset enumeration
 
 Provisioning scripts no longer maintain a second list of supported PDFium asset suffixes. Explicit `--arch` / `-Platform` values are accepted only when the corresponding manifest asset exists, and Android `--arch all` enumerates every `android-*` key directly from the manifest. Host architecture detection remains a normalization layer from OS names to manifest suffixes.
+
+`setup_pdfium.sh --platform android --arch all` is fail-closed: it first enumerates the `android-*` manifest assets and aborts if the set is empty, instead of reporting a false successful provisioning with no ABI installed.

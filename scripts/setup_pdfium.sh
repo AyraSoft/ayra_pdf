@@ -168,10 +168,7 @@ PY
 log "PDFium pinned: $VERSION"
 
 if [[ "$PLATFORM" == android && "$ARCH" == all ]]; then
-    while IFS= read -r target_arch; do
-        [[ -n "$target_arch" ]] || continue
-        install_one android "$target_arch"
-    done < <(
+    android_arches="$(
         python3 - "$MANIFEST" <<'PY'
 import json, sys
 with open(sys.argv[1], 'r', encoding='utf-8') as handle:
@@ -180,7 +177,17 @@ for key in sorted(assets):
     if key.startswith('android-'):
         print(key[len('android-'):])
 PY
-    )
+    )"
+
+    if [[ -z "$android_arches" ]]; then
+        error 'Nessun asset android-* presente nel manifest'
+        exit 1
+    fi
+
+    while IFS= read -r target_arch; do
+        [[ -n "$target_arch" ]] || continue
+        install_one android "$target_arch"
+    done <<< "$android_arches"
 else
     install_one "$PLATFORM" "$ARCH"
 fi
