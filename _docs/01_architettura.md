@@ -93,7 +93,11 @@ Dipendenza obbligatoria: `juce_graphics`.
 `juce_gui_basics` e' richiesta solo dal target consumer che usa la GUI.
 `juce_gui_extra` non e' una dipendenza.
 
-## Current-only
+## Compatibilita' del widget
 
-Il precedente `PDFComponent` e le implementazioni platform-specific v1 sono stati eliminati.
-Non esistono alias, adapter, simboli deprecated o fallback Ayra per quel contratto.
+Le implementazioni platform-specific v1 sono state eliminate. `PdfViewComponent` e' l'unica
+implementazione canonica del widget.
+
+Il nome pubblico `PDFComponent` resta disponibile come alias source-compatible di
+`PdfViewComponent` per preservare i consumer esistenti. L'alias e' lo stesso tipo: non introduce
+un layer legacy, un adapter, un backend alternativo o una seconda source of truth.

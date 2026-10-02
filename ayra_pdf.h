@@ -72,4 +72,11 @@
   #include "widgets/ayra_PdfViewComponent.h"
   #include "widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h"
   #include "widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h"
+
+  // Source-compatible public name used by existing Ayra consumers.
+  // This is the same widget implementation, not a legacy rendering path.
+  namespace ayra
+  {
+  using PDFComponent = PdfViewComponent;
+  }
 #endif

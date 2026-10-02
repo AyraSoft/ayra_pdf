@@ -1,6 +1,6 @@
 # ayra_pdf
 
-Modulo JUCE current-only per lettura, rendering, ricerca, estrazione testo e visualizzazione PDF.
+Modulo JUCE per lettura, rendering, ricerca, estrazione testo e visualizzazione PDF.
 
 **Stato al 2026-10-02:** l'implementazione v2 e' completa a livello statico. In questo ambiente
 non sono disponibili build, test binari o CI: la certificazione runtime cross-platform resta
@@ -29,7 +29,8 @@ ayra_pdf/
 ```
 
 Non esiste piu' un percorso legacy parallelo. `PdfDocument` e `PdfViewComponent` sono le API
-correnti; non esiste alias `PDFComponent`.
+canoniche. Il nome pubblico `PDFComponent` resta disponibile come alias source-compatible di
+`PdfViewComponent` per i consumer esistenti: non seleziona codice o backend legacy.
 
 ### Backend
 
@@ -133,11 +134,12 @@ lock process-wide. Il caller deve comunque rispettare il lifetime dell'oggetto r
 - Rendering/parsing/search non sono realtime-safe e non vanno chiamati dal processBlock.
 - Il widget non esegue parsing o raster dentro `paint()`.
 
-## Current-only
+## Compatibilita' API senza percorso legacy
 
-Il modulo supporta esclusivamente il contratto corrente. Il vecchio `PDFComponent` e il
-relativo codice platform-specific sono stati rimossi. Non esistono alias, adapter o fallback
-di compatibilita'.
+Il vecchio codice platform-specific di `PDFComponent` e' stato rimosso. Il nome pubblico
+`PDFComponent` e' mantenuto come alias di `PdfViewComponent` per preservare i call-site e il
+modo di istanziare il widget gia' usati dai consumer Ayra. Alias e nome canonico sono lo stesso
+tipo e usano un solo percorso di implementazione; non esistono backend, adapter o fallback v1.
 
 ## Documentazione
 

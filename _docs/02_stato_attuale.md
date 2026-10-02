@@ -9,7 +9,7 @@
 ## Regole operative
 
 - Normativa: `AyraSoft/ayra_multiverse/_doc/AYRA_AI_ENGINEERING_MASTER.md`.
-- Current-only: nessun alias, adapter o fallback per API Ayra precedenti.
+- Single implementation: nessun backend/adapter v1; il nome pubblico `PDFComponent` resta alias di `PdfViewComponent` per i consumer esistenti.
 - In questa sessione e' possibile leggere/scrivere codice, ma **non** eseguire build, test
   binari o CI.
 - "done (static)" significa code/diff audit completato, non runtime verified.
@@ -80,14 +80,21 @@ renderer concreti.
 Il modulo dichiara `juce_graphics` come unica dipendenza JUCE obbligatoria.
 `AYRA_PDF_HEADLESS` esclude widget e ogni dipendenza GUI del modulo.
 
-### Current-only cutover
+### Cutover v1 e compatibilita' API
 
-L'audit org-wide AyraSoft del 2026-10-02 non ha trovato consumer di `PDFComponent` fuori da
-`ayra_pdf`. Il percorso v1 e' stato quindi eliminato nello stesso cutover:
+Il percorso v1 e' stato eliminato, ma il successivo compile del consumer
+`AyraSoft/ayra_audio_processors/ayra_internal_plugins/pdf_viewer/ayra_PdfViewer.h` ha mostrato
+che l'audit org-wide del 2026-10-02 era incompleto: quel consumer istanzia ancora
+`PDFComponent pdfComponent{}`.
+
+Il contratto corretto e':
 - nessun `pdf_component/`;
 - nessun include legacy;
-- nessun alias `PDFComponent`;
+- `PDFComponent` resta alias pubblico di `PdfViewComponent`;
 - nessun fallback platform-specific v1.
+
+L'alias preserva il call-site e il modo di istanziare il widget senza riattivare il vecchio
+percorso: `PDFComponent` e `PdfViewComponent` sono lo stesso tipo.
 
 L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 `PDFKit.PDFView`, non e' piu' codice di produzione perche' l'intero legacy e' stato rimosso.

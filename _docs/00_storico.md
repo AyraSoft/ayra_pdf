@@ -6,7 +6,8 @@
 
 > Le decisioni e i piani riportati qui sotto descrivono il percorso storico. In caso di
 > conflitto prevalgono il Master e `_docs/02_stato_attuale.md`. Il vecchio piano di
-> backward compatibility/alias `PDFComponent` non e' piu' normativo: il contratto e' current-only.
+> il percorso implementation v1 non e' piu' normativo. Il nome `PDFComponent` resta pero' un alias
+> source-compatible di `PdfViewComponent`, richiesto da consumer Ayra esistenti.
 
 ---
 

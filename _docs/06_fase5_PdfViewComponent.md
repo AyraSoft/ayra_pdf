@@ -4,7 +4,7 @@
 
 ## Contratto corrente
 
-`PdfViewComponent` e' l'unico widget PDF pubblico Ayra.
+`PdfViewComponent` e' l'unica implementazione canonica del widget PDF Ayra. Il nome pubblico `PDFComponent` e' un alias source-compatible dello stesso tipo.
 
 Responsabilita':
 - documento attivo tramite `std::shared_ptr<PdfDocument>`;
@@ -79,9 +79,11 @@ cio' che serve.
 Listener formali prima delle `std::function`.
 Le notifiche sincrone usano `Component::BailOutChecker`.
 
-## Current-only
+## Compatibilita' API
 
-Il precedente widget `PDFComponent` e' stato rimosso. Nessun alias o adapter lo mantiene.
+Il precedente percorso di implementazione `PDFComponent` e' stato rimosso. Il nome
+`PDFComponent` resta come alias di `PdfViewComponent` per i consumer esistenti; non esiste
+un adapter o un secondo widget.
 
 ## Verification esterna
 
