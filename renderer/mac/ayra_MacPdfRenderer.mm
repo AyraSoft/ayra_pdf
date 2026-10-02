@@ -33,6 +33,60 @@
 namespace ayra
 {
 
+namespace
+{
+
+class ProviderDataSnapshot final
+{
+public:
+    explicit ProviderDataSnapshot (CGDataProviderRef provider) noexcept
+        : data (provider != nullptr ? CGDataProviderCopyData (provider) : nullptr)
+    {
+        if (data == nullptr)
+            return;
+
+        const CFIndex length = CFDataGetLength (data);
+
+        if (length <= 0
+            || static_cast<std::uint64_t> (length) > detail::maxDocumentBytes)
+        {
+            return;
+        }
+
+        const auto* bytePtr = CFDataGetBytePtr (data);
+
+        if (bytePtr == nullptr)
+            return;
+
+        bytes = bytePtr;
+        size = static_cast<size_t> (length);
+    }
+
+    ~ProviderDataSnapshot()
+    {
+        if (data != nullptr)
+            CFRelease (data);
+    }
+
+    [[nodiscard]] bool isValid() const noexcept
+    {
+        return bytes != nullptr && size > 0;
+    }
+
+    [[nodiscard]] const void* getData() const noexcept { return bytes; }
+    [[nodiscard]] size_t getSize() const noexcept { return size; }
+
+private:
+    CFDataRef data { nullptr };
+    const UInt8* bytes { nullptr };
+    size_t size { 0 };
+
+    ProviderDataSnapshot (const ProviderDataSnapshot&) = delete;
+    ProviderDataSnapshot& operator= (const ProviderDataSnapshot&) = delete;
+};
+
+} // namespace
+
 // ======================================================================
 // Impl — stato ObjC nascosto agli header C++
 // ======================================================================
@@ -135,14 +189,48 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
 bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
 {
-    jassertfalse; // TODO: Fase 2 — migrare da MacPDFComponent.mm exportCurrentDocument()
-    return false;
+    if (impl->document == nullptr || impl->provider == nullptr)
+        return false;
+
+    ProviderDataSnapshot snapshot (impl->provider);
+
+    if (!snapshot.isValid())
+        return false;
+
+    try
+    {
+        // juce::File::replaceWithData writes through a temporary file before
+        // replacing the destination, so a failed write does not truncate it.
+        return destFile.replaceWithData (snapshot.getData(), snapshot.getSize());
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 {
-    jassertfalse; // TODO: Fase 2 — migrare da MacPDFComponent.mm getMemoryBlockFromDocument()
-    return false;
+    if (impl->document == nullptr || impl->provider == nullptr)
+        return false;
+
+    ProviderDataSnapshot snapshot (impl->provider);
+
+    if (!snapshot.isValid())
+        return false;
+
+    try
+    {
+        // Transactional destination semantics: build the replacement first, then
+        // publish it only after the allocation/copy has completed successfully.
+        juce::MemoryBlock replacement (snapshot.getData(), snapshot.getSize());
+        destData = std::move (replacement);
+        return true;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 void MacPdfRenderer::close() noexcept
