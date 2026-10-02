@@ -64,10 +64,41 @@ constexpr float minVisibleFraction = 0.1f;
     if (!std::isfinite (safe) || safe <= 0.0)
         return 1.0f;
 
-    // Renderer dimensions use ceil(). Keep a small margin whenever the
-    // request is budget-limited so rounding cannot cross a hard cap.
-    if (safe < desired)
+    const auto fitsIntegerRasterBudget = [width, height] (double scale) noexcept
+    {
+        if (!std::isfinite (scale) || scale <= 0.0)
+            return false;
+
+        const double rasterWidth = std::ceil (width * scale);
+        const double rasterHeight = std::ceil (height * scale);
+
+        if (!std::isfinite (rasterWidth) || !std::isfinite (rasterHeight)
+            || rasterWidth <= 0.0 || rasterHeight <= 0.0
+            || rasterWidth > static_cast<double> (detail::maxRasterDimension)
+            || rasterHeight > static_cast<double> (detail::maxRasterDimension))
+        {
+            return false;
+        }
+
+        const auto widthPixels = static_cast<std::uint64_t> (rasterWidth);
+        const auto heightPixels = static_cast<std::uint64_t> (rasterHeight);
+
+        return widthPixels * heightPixels <= detail::maxRasterPixels;
+    };
+
+    // Renderer dimensions use ceil(). Validate the integer raster that will
+    // actually be requested, not only the continuous theoretical scale.
+    for (int attempt = 0;
+         attempt < 8 && !fitsIntegerRasterBudget (safe);
+         ++attempt)
+    {
         safe *= 0.99;
+    }
+
+    if (!fitsIntegerRasterBudget (safe))
+        return static_cast<float> (std::max (
+            safe * 0.5,
+            static_cast<double> (std::numeric_limits<float>::min())));
 
     return static_cast<float> (std::max (
         safe,

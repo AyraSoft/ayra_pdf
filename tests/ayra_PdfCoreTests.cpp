@@ -294,6 +294,21 @@ public:
             expect (rasterWidth <= static_cast<std::uint64_t> (detail::maxRasterDimension));
             expect (rasterHeight <= static_cast<std::uint64_t> (detail::maxRasterDimension));
             expect (rasterWidth * rasterHeight <= detail::maxRasterPixels);
+
+            const double exactPixelLimit = std::sqrt (
+                static_cast<double> (detail::maxRasterPixels)
+                / (595.0 * 842.0));
+            const float edgeSafe = clampRasterScaleToSafetyBudget (
+                a4,
+                static_cast<float> (exactPixelLimit));
+            const auto edgeWidth = static_cast<std::uint64_t> (
+                std::ceil (595.0 * static_cast<double> (edgeSafe)));
+            const auto edgeHeight = static_cast<std::uint64_t> (
+                std::ceil (842.0 * static_cast<double> (edgeSafe)));
+
+            expect (edgeWidth <= static_cast<std::uint64_t> (detail::maxRasterDimension));
+            expect (edgeHeight <= static_cast<std::uint64_t> (detail::maxRasterDimension));
+            expect (edgeWidth * edgeHeight <= detail::maxRasterPixels);
         }
 
         beginTest ("Generated fixture opens with visible box and rotations");
