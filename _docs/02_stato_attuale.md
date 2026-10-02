@@ -37,8 +37,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | ID | Area | Deliverable | Dipendenze | Stato |
 |---|---|---|---|---|
 | **S00** | Governance/docs | Stato canonico, roadmap, current-only, limiti verifica | - | **done (static)** |
-| **M01** | Mac renderer | Lifecycle, load file/memory, close, page count/metadata | S00 | **in progress** |
-| **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | pending |
+| **M01** | Mac renderer | Lifecycle, load file/memory, close, page count/metadata | S00 | **done (static)** |
+| **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | **in progress** |
 | **M03** | Mac renderer | Save file + save memory, round-trip semantics senza `dummyURL` | M01 | pending |
 | **M04** | Mac renderer | Estrazione testo + ricerca con geometria contrattualmente corretta | M01 | pending |
 | **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | pending |
@@ -99,6 +99,10 @@ bug e ownership legacy non vengono copiati automaticamente.
 - `getPage` ritorna indice, bounds e rotazione coerenti;
 - static audit completato; build/test **external pending**.
 
+**Esito M01 (2026-10-02)**: implementati lifecycle transazionale, ownership esplicita
+`CGPDFDocumentRef -> CGDataProviderRef -> backing MemoryBlock`, caricamento file/memoria,
+conteggio e metadati pagina con range/narrowing checks. Nessuna build/CI eseguita qui.
+
 ---
 ## Tabella riepilogativa
 
@@ -110,7 +114,7 @@ bug e ownership legacy non vengono copiati automaticamente.
 | `engine/ayra_PdfDocument.cpp` | ❌ stub (tutti jassertfalse) | tutte | 4 |
 | `renderer/ayra_PdfRenderer.h` | ✅ interfaccia completa | tutte | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
-| `renderer/mac/ayra_MacPdfRenderer.mm` | ❌ stub (jassertfalse), solo close() parziale | macOS/iOS | 2 |
+| `renderer/mac/ayra_MacPdfRenderer.mm` | 🟠 M01 completo; M02-M04 ancora pending | macOS/iOS | 2 |
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
 | `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ❌ stub (jassertfalse), solo close() parziale | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |

@@ -17,7 +17,7 @@ Deliverable della Fase 2:
 - `saveToFile` — export su file (migrazione da `exportCurrentDocument`)
 - `saveToMemory` — serializzazione in memoria (con fix del bug `dummyURL`)
 - `getPageCount` — conteggio pagine strutturale
-- `getPage` — informazioni geometriche pagina con conversione Y-axis corretta
+- `getPage` — bounds in PDF user space + rotazione; la conversione viewport appartiene al widget
 - `renderPage` — rasterizzazione in `juce::Image` via `CGBitmapContext`
 - `extractText` — estrazione testo tramite `CGPDFScanner`
 - `findText` — ricerca testuale con bounding box
@@ -199,10 +199,8 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
     PdfPage result;
     result.index  = pageIndex;
-    // Bounds in PDF user space (punti tipografici). L'origine e' in basso a sinistra
-    // in CoreGraphics, ma bounds.getX()/getY() rappresentano l'offset dell'angolo
-    // in alto a sinistra in coordinate juce. Per documenti standard (MediaBox = [0 0 w h])
-    // origin.x = 0 e origin.y = 0, quindi nessuna conversione e' necessaria per le dimensioni.
+    // Bounds canoniche in PDF user space (Y-up). Nessuna conversione viewport qui:
+    // quella responsabilita' appartiene al consumer/widget.
     result.bounds   = { (float)mediaBox.origin.x, (float)mediaBox.origin.y,
                         (float)mediaBox.size.width, (float)mediaBox.size.height };
     result.rotation = rotationCG;
@@ -453,16 +451,16 @@ Se i bounds precisi di ricerca sono prioritari, valutare l'uso di PDFium anche s
 
 ## Checklist implementazione Fase 2
 
-- [ ] `loadFromFile` — migrazione da `MacPDFComponent.mm:63-74`
-- [ ] `loadFromMemory` — migrazione da `MacPDFComponent.mm:236-253`
+- [x] `loadFromFile` — implementazione current-only con provider owned e commit transazionale
+- [x] `loadFromMemory` — backing buffer owned dal renderer per tutta la vita del provider
 - [ ] `saveToFile` — migrazione da `MacPDFComponent.mm:207-234`
 - [ ] `saveToMemory` — **nuovo** con fix `CGDataConsumerCreate` (vedi sezione sopra)
-- [ ] `getPageCount` — una riga: `CGPDFDocumentGetNumberOfPages`
-- [ ] `getPage` — bounds + rotazione, conversione Y-axis
+- [x] `getPageCount` — `CGPDFDocumentGetNumberOfPages` con clamp al dominio `int`
+- [x] `getPage` — range check 0-based, bounds finite in PDF user space, rotazione normalizzata
 - [ ] `renderPage` — `CGBitmapContext` + `CGPDFPageGetDrawingTransform`
 - [ ] `extractText` — `CGPDFScanner` con operatori Tj/TJ/'/"
 - [ ] `findText` — ricerca su testo estratto (bounds approssimati o completi)
 - [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
-- [ ] Verificare che `close()` rilasci correttamente documento e pdfData
+- [x] `close()` idempotente: documento -> provider -> backing memory
 - [ ] Test manuale: aprire un PDF standard, navigare pagine, verificare rendering
 - [ ] Test `saveToMemory` -> `loadFromMemory`: round-trip corretto

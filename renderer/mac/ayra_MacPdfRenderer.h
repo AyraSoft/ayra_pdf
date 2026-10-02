@@ -33,6 +33,10 @@ namespace ayra
  *  Usa il pattern Pimpl per isolare i tipi ObjC/CoreGraphics dagli
  *  header C++ — necessario per evitare contaminazione degli altri moduli.
  *
+ *  @note Una singola istanza non e' thread-safe: serializzare tutte le chiamate
+ *        oppure usare istanze distinte per thread/documento.
+ *  @note Caricamento, parsing e rendering non sono realtime-safe.
+ *
  *  @see PdfRenderer, PdfDocument
  */
 class MacPdfRenderer final : public PdfRenderer
