@@ -325,7 +325,7 @@ public:
         expect (concurrentSearchOk.load (std::memory_order_acquire));
 
        #if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
-        beginTest ("PDFium process lifecycle survives concurrent multi-instance churn");
+        beginTest ("PDFium process lock serializes concurrent multi-instance work");
 
         constexpr int workerCount = 4;
         constexpr int iterationsPerWorker = 4;
