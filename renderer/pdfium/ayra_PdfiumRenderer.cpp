@@ -244,7 +244,8 @@ struct PdfiumRenderer::Impl
     FPDF_DOCUMENT document { nullptr };
     std::shared_ptr<const juce::MemoryBlock> pdfData;
 
-    void closeUnlocked() noexcept
+    [[nodiscard]] std::shared_ptr<const juce::MemoryBlock>
+    closeUnlockedAndRetireBytes() noexcept
     {
         if (document != nullptr)
         {
@@ -252,7 +253,7 @@ struct PdfiumRenderer::Impl
             document = nullptr;
         }
 
-        pdfData.reset();
+        return std::exchange (pdfData, {});
     }
 
     [[nodiscard]] bool loadOwnedData (std::shared_ptr<const juce::MemoryBlock> newData) noexcept
@@ -260,19 +261,27 @@ struct PdfiumRenderer::Impl
         if (newData == nullptr || newData->getSize() == 0)
             return false;
 
-        auto& state = getPdfiumProcessState();
-        const juce::ScopedLock lock (state.apiLock);
+        std::shared_ptr<const juce::MemoryBlock> retiredBytes;
 
-        FPDF_DOCUMENT newDocument = FPDF_LoadMemDocument64 (newData->getData(),
-                                                            newData->getSize(),
-                                                            nullptr);
+        {
+            auto& state = getPdfiumProcessState();
+            const juce::ScopedLock lock (state.apiLock);
 
-        if (newDocument == nullptr)
-            return false;
+            FPDF_DOCUMENT newDocument = FPDF_LoadMemDocument64 (newData->getData(),
+                                                                newData->getSize(),
+                                                                nullptr);
 
-        closeUnlocked();
-        pdfData = std::move (newData);
-        document = newDocument;
+            if (newDocument == nullptr)
+                return false;
+
+            retiredBytes = closeUnlockedAndRetireBytes();
+            pdfData = std::move (newData);
+            document = newDocument;
+        }
+
+        // Potentially large MemoryBlock reclamation happens after releasing the
+        // process-wide PDFium lock.
+        retiredBytes.reset();
         return true;
     }
 };
@@ -401,9 +410,15 @@ bool PdfiumRenderer::sourceBytesEqualFile (const juce::File& file) const noexcep
 
 void PdfiumRenderer::close() noexcept
 {
-    auto& state = getPdfiumProcessState();
-    const juce::ScopedLock lock (state.apiLock);
-    impl->closeUnlocked();
+    std::shared_ptr<const juce::MemoryBlock> retiredBytes;
+
+    {
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
+        retiredBytes = impl->closeUnlockedAndRetireBytes();
+    }
+
+    retiredBytes.reset();
 }
 
 bool PdfiumRenderer::isLoaded() const noexcept
