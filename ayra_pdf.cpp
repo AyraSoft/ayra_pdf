@@ -28,6 +28,10 @@
 #include <new>
 #include <vector>
 
+#if JUCE_UNIT_TESTS
+  #include <thread>
+#endif
+
 //==============================================================================
 // PLATFORM RENDERER
 

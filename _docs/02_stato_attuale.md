@@ -162,7 +162,9 @@ Il test genera in memoria una fixture PDF ASCII con:
 - xref/trailer reali.
 
 Copre geometry pura, visible box, open/render/search/extract, save byte-preserving,
-load transazionale e input invalidi. Non e' stato eseguito in questa sessione.
+load transazionale, budget oversize, destination-on-failure, chiamate concorrenti sulla
+stessa istanza e (su target PDFium) churn concorrente multi-instance init/destroy.
+Non e' stato eseguito in questa sessione.
 
 ## PDFium provisioning
 

@@ -278,6 +278,88 @@ public:
         expect (document.saveToMemoryBlock (afterFailure));
         expect (afterFailure == fixture);
 
+        beginTest ("Resource budgets fail before touching oversized payload memory");
+
+        static constexpr char oneByte = 'x';
+        const auto oversizedDocumentBytes = static_cast<size_t> (detail::maxDocumentBytes + 1u);
+        expect (! document.open (&oneByte, oversizedDocumentBytes));
+        expect (document.isOpen());
+        expectEquals (document.getPageCount(), 4);
+
+        const auto oversizedQuery = juce::String::repeatedString (
+            "x",
+            static_cast<int> (detail::maxSearchQueryUtf8Bytes + 1u));
+        expect (document.findText (oversizedQuery, 0).isEmpty());
+
+        beginTest ("Concurrent renderer calls are serialized safely");
+
+        std::atomic<bool> concurrentRenderOk { true };
+        std::atomic<bool> concurrentSearchOk { true };
+
+        std::thread renderThread ([&]
+        {
+            for (int iteration = 0; iteration < 8; ++iteration)
+            {
+                const auto image = document.renderPage (iteration % 4, 0.5f);
+
+                if (! image.isValid())
+                    concurrentRenderOk.store (false, std::memory_order_release);
+            }
+        });
+
+        std::thread searchThread ([&]
+        {
+            for (int iteration = 0; iteration < 8; ++iteration)
+            {
+                const auto results = document.findText ("AYRA", iteration % 4);
+
+                if (results.size() != 1)
+                    concurrentSearchOk.store (false, std::memory_order_release);
+            }
+        });
+
+        renderThread.join();
+        searchThread.join();
+
+        expect (concurrentRenderOk.load (std::memory_order_acquire));
+        expect (concurrentSearchOk.load (std::memory_order_acquire));
+
+       #if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
+        beginTest ("PDFium process lifecycle survives concurrent multi-instance churn");
+
+        constexpr int workerCount = 4;
+        constexpr int iterationsPerWorker = 4;
+        std::atomic<int> completedIterations { 0 };
+        std::vector<std::thread> workers;
+        workers.reserve (workerCount);
+
+        for (int worker = 0; worker < workerCount; ++worker)
+        {
+            workers.emplace_back ([&]
+            {
+                for (int iteration = 0; iteration < iterationsPerWorker; ++iteration)
+                {
+                    PdfDocument localDocument;
+
+                    if (! localDocument.open (fixture.getData(), fixture.getSize()))
+                        continue;
+
+                    const auto image = localDocument.renderPage (iteration % 4, 0.25f);
+                    const auto matches = localDocument.findText ("AYRA", iteration % 4);
+
+                    if (image.isValid() && matches.size() == 1)
+                        completedIterations.fetch_add (1, std::memory_order_relaxed);
+                }
+            });
+        }
+
+        for (auto& worker : workers)
+            worker.join();
+
+        expectEquals (completedIterations.load (std::memory_order_relaxed),
+                      workerCount * iterationsPerWorker);
+       #endif
+
         beginTest ("Invalid indexes and raster scales fail closed");
 
         expect (! document.getPage (-1).isValid());
@@ -289,6 +371,15 @@ public:
         document.close();
         expect (! document.isOpen());
         expectEquals (document.getPageCount(), 0);
+
+        beginTest ("Save failure leaves destination memory unchanged");
+
+        static constexpr char sentinelBytes[] = "sentinel";
+        juce::MemoryBlock destination (sentinelBytes, sizeof (sentinelBytes) - 1);
+        const auto originalDestination = destination;
+
+        expect (! document.saveToMemoryBlock (destination));
+        expect (destination == originalDestination);
     }
 };
 
