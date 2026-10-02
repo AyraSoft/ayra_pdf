@@ -620,6 +620,7 @@ void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
     if (doc == nullptr)
     {
         const bool hadDocument = thereIsADocumentLoaded();
+        const bool hadVisibleSearchResults = !searchResults.isEmpty();
 
         if (renderState != nullptr)
             renderState->cancelWork();
@@ -636,7 +637,7 @@ void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
         repaint();
 
         if (hadDocument)
-            notifyDocumentClosed();
+            notifyDocumentClosed (hadVisibleSearchResults);
 
         return;
     }
@@ -824,6 +825,8 @@ PdfPage PdfViewComponent::getCurrentPageInfo() const
 
 void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
 {
+    const bool hadVisibleSearchResults = !searchResults.isEmpty();
+
     currentDocument = std::move (doc);
     currentPageCount = currentDocument != nullptr ? currentDocument->getPageCount() : 0;
     currentPage = currentPageCount > 0 ? 1 : 0;
@@ -839,7 +842,7 @@ void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
 
     invalidatePageCache();
     requestPageRender();
-    notifyDocumentLoaded();
+    notifyDocumentLoaded (hadVisibleSearchResults);
 }
 
 void PdfViewComponent::invalidatePageCache()
@@ -1129,7 +1132,7 @@ juce::Rectangle<float> PdfViewComponent::pdfBoundsToWidget (const PdfPage& page,
     return displayBounds * currentZoom + topLeft;
 }
 
-void PdfViewComponent::notifyDocumentLoaded()
+void PdfViewComponent::notifyDocumentLoaded (bool searchResultsInvalidated)
 {
     juce::Component::BailOutChecker checker (this);
     listeners.callChecked (checker, [this] (Listener& listener)
@@ -1142,9 +1145,15 @@ void PdfViewComponent::notifyDocumentLoaded()
 
     if (onDocumentLoaded)
         onDocumentLoaded();
+
+    if (checker.shouldBailOut())
+        return;
+
+    if (searchResultsInvalidated)
+        notifySearchResultsChanged();
 }
 
-void PdfViewComponent::notifyDocumentClosed()
+void PdfViewComponent::notifyDocumentClosed (bool searchResultsInvalidated)
 {
     juce::Component::BailOutChecker checker (this);
     listeners.callChecked (checker, [this] (Listener& listener)
@@ -1157,6 +1166,12 @@ void PdfViewComponent::notifyDocumentClosed()
 
     if (onDocumentClosed)
         onDocumentClosed();
+
+    if (checker.shouldBailOut())
+        return;
+
+    if (searchResultsInvalidated)
+        notifySearchResultsChanged();
 }
 
 void PdfViewComponent::notifyPageChanged (bool searchResultsInvalidated)

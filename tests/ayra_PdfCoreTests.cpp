@@ -471,12 +471,26 @@ public:
             expectEquals (listener.loaded, 1);
             expectEquals (callbackLoaded, 1);
 
+            view.setSearchQuery ("AYRA");
+            expect (getPdfRenderPool().removeAllJobs (false, 5000));
+
+            // Drain AsyncUpdater publications deterministically on the Message Thread.
+            for (int attempt = 0; attempt < 8 && view.getSearchResultCount() == 0; ++attempt)
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+
+            const int searchNotificationsBeforeClose = listener.searchChanged;
+            const bool hadSearchResultsBeforeClose = view.getSearchResultCount() > 0;
+
             view.setDocument (nullptr);
             expect (! view.thereIsADocumentLoaded());
             expectEquals (view.getTotPagesNum(), -1);
             expectEquals (view.getCurrentPageOnScreen(), -1);
             expectEquals (listener.closed, 1);
             expectEquals (callbackClosed, 1);
+
+            if (hadSearchResultsBeforeClose)
+                expectEquals (listener.searchChanged,
+                              searchNotificationsBeforeClose + 1);
 
             view.setDocument (nullptr);
             expectEquals (listener.closed, 1);

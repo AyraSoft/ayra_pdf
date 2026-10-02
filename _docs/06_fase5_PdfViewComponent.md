@@ -153,3 +153,11 @@ with result count 0. Consumers no longer need to maintain a parallel “stale co
 Page navigation also publishes search invalidation when the previous page had visible matches. The
 ordering is page-changed first, then search-count=0, with a `BailOutChecker` between callbacks so a
 listener may destroy the widget safely. Consumers therefore do not own page/search coherence.
+
+
+## Document/search invalidation ownership
+
+Document replacement and explicit close publish search-count invalidation from the widget when
+visible highlights existed. Ordering is document loaded/closed first, then search-count=0, with a
+`BailOutChecker` between callbacks. Consumers no longer own match-count reset policy for query,
+page, document replacement, or document close.

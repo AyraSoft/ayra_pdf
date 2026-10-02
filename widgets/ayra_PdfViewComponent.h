@@ -204,8 +204,8 @@ private:
     [[nodiscard]] juce::Rectangle<float> pdfBoundsToWidget (const PdfPage& page,
                                                             juce::Rectangle<float> pdfBounds) const;
 
-    void notifyDocumentLoaded();
-    void notifyDocumentClosed();
+    void notifyDocumentLoaded (bool searchResultsInvalidated = false);
+    void notifyDocumentClosed (bool searchResultsInvalidated = false);
     void notifyPageChanged (bool searchResultsInvalidated = false);
     void notifySearchResultsChanged();
 
