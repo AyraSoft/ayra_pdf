@@ -32,3 +32,13 @@ On Windows/Linux/Android, PDFium linkage is resolved through
 the module setup scripts.
 
 This repository workflow writes and audits the runner but does not execute it here.
+
+
+On a native build, CTest registration is automatic:
+
+```bash
+ctest --test-dir build/pdf-core --output-on-failure -C Release
+```
+
+CTest registration is omitted while cross-compiling; deployment/device execution remains owned by
+the platform-specific V01 step.

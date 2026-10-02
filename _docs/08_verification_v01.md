@@ -117,3 +117,14 @@ Dove supportato: ASan, UBSan e TSan sul protocollo worker/widget e stress PDFium
 V01 passa soltanto con evidenza di build/link, unit test, dependency load, behavior core,
 GUI dove presente, concurrency/teardown e malformed input sui target dichiarati.
 Riportare data, target, toolchain e risultato in `_docs/02_stato_attuale.md`.
+
+
+## 10. CTest entrypoint
+
+For native core-runner builds, the canonical test is registered as `ayra_pdf_core_contract`:
+
+```bash
+ctest --test-dir build/pdf-core --output-on-failure -C Release
+```
+
+Cross-compiled targets are intentionally not registered as host-runnable CTest tests.

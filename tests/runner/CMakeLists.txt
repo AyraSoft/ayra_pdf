@@ -73,3 +73,11 @@ target_link_libraries(AyraPdfCoreContractTests PRIVATE
 
 include("${AYRA_MODULES}/ayra_pdf/cmake/AyraPdfiumTarget.cmake")
 ayra_pdf_link_pdfium(AyraPdfCoreContractTests COPY_RUNTIME)
+
+include(CTest)
+
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+    add_test(
+        NAME ayra_pdf_core_contract
+        COMMAND $<TARGET_FILE:AyraPdfCoreContractTests>)
+endif()
