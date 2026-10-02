@@ -484,6 +484,8 @@ nel widget.
 - zoom finito e bounded; no NaN/Inf nello stato;
 - pan non invalida il raster;
 - zoom/HiDPI invalida il raster tramite generation token;
+- richieste render/search sono coalesced: al massimo un worker job per tipo e widget,
+  con latest-request-wins e nessuna coda per-evento non bounded;
 - clamp lascia sempre una porzione ragionevole della pagina visibile;
 - search results obsoleti vengono sostituiti atomicamente sul Message Thread;
 - page-space -> widget-space ha un solo owner/helper nel widget;

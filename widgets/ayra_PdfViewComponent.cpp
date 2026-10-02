@@ -43,6 +43,22 @@ struct PdfViewComponent::RenderState
 
     // Accesso esclusivo Message Thread: il worker non legge mai questo puntatore.
     PdfViewComponent* owner { nullptr };
+
+    juce::CriticalSection requestLock;
+
+    bool renderJobScheduled { false };
+    bool renderRequestPending { false };
+    std::shared_ptr<PdfDocument> renderDocument;
+    std::uint64_t renderRequestGeneration { 0 };
+    int renderPageIndex { -1 };
+    float renderScale { 1.0f };
+
+    bool searchJobScheduled { false };
+    bool searchRequestPending { false };
+    std::shared_ptr<PdfDocument> searchDocument;
+    std::uint64_t searchRequestGeneration { 0 };
+    int searchPageIndex { -1 };
+    juce::String searchQuery;
 };
 
 //==============================================================================
@@ -553,31 +569,72 @@ void PdfViewComponent::requestPageRender()
         return;
 
     const auto state = renderState;
-    const auto generation = state->renderGeneration.load (std::memory_order_acquire);
-    const int pageIndex = currentPage - 1;
-    const float rasterScale = currentZoom * rasterDeviceScale;
-    const auto document = currentDocument;
+    bool shouldScheduleJob = false;
+
+    {
+        const juce::ScopedLock lock (state->requestLock);
+
+        state->renderDocument = currentDocument;
+        state->renderRequestGeneration = state->renderGeneration.load (std::memory_order_acquire);
+        state->renderPageIndex = currentPage - 1;
+        state->renderScale = currentZoom * rasterDeviceScale;
+        state->renderRequestPending = true;
+
+        if (!state->renderJobScheduled)
+        {
+            state->renderJobScheduled = true;
+            shouldScheduleJob = true;
+        }
+    }
+
+    if (!shouldScheduleJob)
+        return;
 
     try
     {
-        getPdfRenderPool().addJob (
-            [state, document, generation, pageIndex, rasterScale]
+        getPdfRenderPool().addJob ([state]
+        {
+            for (;;)
             {
-                if (state->renderGeneration.load (std::memory_order_acquire) != generation)
-                    return;
+                std::shared_ptr<PdfDocument> document;
+                std::uint64_t generation = 0;
+                int pageIndex = -1;
+                float rasterScale = 1.0f;
+
+                {
+                    const juce::ScopedLock lock (state->requestLock);
+
+                    if (!state->renderRequestPending)
+                    {
+                        state->renderJobScheduled = false;
+                        return;
+                    }
+
+                    document = state->renderDocument;
+                    generation = state->renderRequestGeneration;
+                    pageIndex = state->renderPageIndex;
+                    rasterScale = state->renderScale;
+                    state->renderRequestPending = false;
+                }
+
+                if (document == nullptr
+                    || state->renderGeneration.load (std::memory_order_acquire) != generation)
+                {
+                    continue;
+                }
 
                 const auto page = document->getPage (pageIndex);
 
                 if (!page.isValid()
                     || state->renderGeneration.load (std::memory_order_acquire) != generation)
                 {
-                    return;
+                    continue;
                 }
 
                 auto image = document->renderPage (pageIndex, rasterScale);
 
                 if (state->renderGeneration.load (std::memory_order_acquire) != generation)
-                    return;
+                    continue;
 
                 try
                 {
@@ -594,10 +651,13 @@ void PdfViewComponent::requestPageRender()
                 catch (const std::bad_alloc&)
                 {
                 }
-            });
+            }
+        });
     }
     catch (const std::bad_alloc&)
     {
+        const juce::ScopedLock lock (state->requestLock);
+        state->renderJobScheduled = false;
     }
 }
 
@@ -637,23 +697,65 @@ void PdfViewComponent::requestSearchResults()
     }
 
     const auto state = renderState;
-    const auto generation = state->searchGeneration.load (std::memory_order_acquire);
-    const int pageIndex = currentPage - 1;
-    const auto query = searchQuery;
-    const auto document = currentDocument;
+    bool shouldScheduleJob = false;
+
+    {
+        const juce::ScopedLock lock (state->requestLock);
+
+        state->searchDocument = currentDocument;
+        state->searchRequestGeneration = state->searchGeneration.load (std::memory_order_acquire);
+        state->searchPageIndex = currentPage - 1;
+        state->searchQuery = searchQuery;
+        state->searchRequestPending = true;
+
+        if (!state->searchJobScheduled)
+        {
+            state->searchJobScheduled = true;
+            shouldScheduleJob = true;
+        }
+    }
+
+    if (!shouldScheduleJob)
+        return;
 
     try
     {
-        getPdfRenderPool().addJob (
-            [state, document, generation, pageIndex, query]
+        getPdfRenderPool().addJob ([state]
+        {
+            for (;;)
             {
-                if (state->searchGeneration.load (std::memory_order_acquire) != generation)
-                    return;
+                std::shared_ptr<PdfDocument> document;
+                std::uint64_t generation = 0;
+                int pageIndex = -1;
+                juce::String query;
+
+                {
+                    const juce::ScopedLock lock (state->requestLock);
+
+                    if (!state->searchRequestPending)
+                    {
+                        state->searchJobScheduled = false;
+                        return;
+                    }
+
+                    document = state->searchDocument;
+                    generation = state->searchRequestGeneration;
+                    pageIndex = state->searchPageIndex;
+                    query = state->searchQuery;
+                    state->searchRequestPending = false;
+                }
+
+                if (document == nullptr
+                    || query.isEmpty()
+                    || state->searchGeneration.load (std::memory_order_acquire) != generation)
+                {
+                    continue;
+                }
 
                 auto results = document->findText (query, pageIndex);
 
                 if (state->searchGeneration.load (std::memory_order_acquire) != generation)
-                    return;
+                    continue;
 
                 try
                 {
@@ -672,10 +774,13 @@ void PdfViewComponent::requestSearchResults()
                 catch (const std::bad_alloc&)
                 {
                 }
-            });
+            }
+        });
     }
     catch (const std::bad_alloc&)
     {
+        const juce::ScopedLock lock (state->requestLock);
+        state->searchJobScheduled = false;
     }
 }
 
