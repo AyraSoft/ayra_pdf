@@ -110,7 +110,22 @@ Per ogni ABI distribuita:
 
 ## 8. Sanitizer
 
-Dove supportato: ASan, UBSan e TSan sul protocollo worker/widget e stress PDFium.
+I runner accettano `-DAYRA_PDF_TEST_SANITIZER=address|undefined|thread` con frontend GCC/Clang.
+
+Esempio:
+
+```bash
+cmake -S tests/runner -B build/pdf-core-tsan \
+  -DAYRA_JUCE_DIR=/path/to/JUCE \
+  -DAYRA_PDF_TEST_SANITIZER=thread \
+  -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/pdf-core-tsan
+ctest --test-dir build/pdf-core-tsan --output-on-failure
+```
+
+Eseguire build directory separate per ASan/UBSan/TSan. PDFium precompilato non e' strumentato,
+ma il protocollo Ayra worker/widget e il lifetime delle chiamate restano osservabili. Configurazioni
+MSVC-specifiche restano nel toolchain esterno.
 
 ## 9. Esito
 

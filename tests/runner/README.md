@@ -42,3 +42,19 @@ ctest --test-dir build/pdf-core --output-on-failure -C Release
 
 CTest registration is omitted while cross-compiling; deployment/device execution remains owned by
 the platform-specific V01 step.
+
+
+## Sanitizers
+
+With a GCC/Clang-style frontend, configure one sanitizer per build directory:
+
+```bash
+cmake -S tests/runner -B build/pdf-core-asan \
+  -DAYRA_JUCE_DIR=/path/to/JUCE \
+  -DAYRA_PDF_TEST_SANITIZER=address \
+  -DCMAKE_BUILD_TYPE=Debug
+```
+
+Supported values are `address`, `undefined`, and `thread`. Keep separate build directories; ASan
+and TSan are not combined into one target. MSVC-specific sanitizer configuration remains an external
+toolchain concern rather than being approximated with incompatible flags.
