@@ -149,6 +149,12 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 ## V01 preparation
 
 Aggiunto `tests/ayra_PdfCoreTests.cpp`, incluso dal root solo con `JUCE_UNIT_TESTS`.
+Durante il preflight statico sono stati inoltre chiusi:
+- ownership PDFKit compatibile ARC/non-ARC;
+- visible page box uniforme tra Apple/PDFium (MediaBox intersect CropBox);
+- geometry post-rotation centralizzata in `PdfPage::getDisplayBounds()`;
+- publication worker GUI tramite `AsyncUpdater` cancellabile;
+- self-lifetime del RenderState durante callback che possono distruggere il widget.
 Il test genera in memoria una fixture PDF ASCII con:
 - 4 pagine /Rotate 0/90/180/270;
 - MediaBox e CropBox differenti;
