@@ -30,6 +30,9 @@ namespace
 struct PdfViewComponent::RenderState
 {
     std::atomic<std::uint64_t> generation { 0 };
+
+    // Accesso esclusivo Message Thread: il worker non legge mai questo puntatore.
+    PdfViewComponent* owner { nullptr };
 };
 
 //==============================================================================
@@ -141,12 +144,16 @@ void PdfViewComponent::LookAndFeelMethods::drawPdfViewPageShadow (juce::Graphics
 PdfViewComponent::PdfViewComponent()
     : renderState (std::make_shared<RenderState>())
 {
+    renderState->owner = this;
 }
 
 PdfViewComponent::~PdfViewComponent()
 {
     if (renderState != nullptr)
+    {
+        renderState->owner = nullptr;
         renderState->generation.fetch_add (1, std::memory_order_release);
+    }
 
     currentDocument.reset();
 }
@@ -389,12 +396,11 @@ void PdfViewComponent::requestPageRender()
     const int pageIndex = currentPage - 1;
     const float rasterScale = currentZoom;
     const auto document = currentDocument;
-    const juce::Component::SafePointer<PdfViewComponent> safeThis (this);
 
     try
     {
         getPdfRenderPool().addJob (
-            [safeThis, state, document, generation, pageIndex, rasterScale]
+            [state, document, generation, pageIndex, rasterScale]
             {
                 if (state->generation.load (std::memory_order_acquire) != generation)
                     return;
@@ -415,13 +421,13 @@ void PdfViewComponent::requestPageRender()
                 try
                 {
                     (void) juce::MessageManager::callAsync (
-                        [safeThis, state, generation, page, image = std::move (image)] () mutable
+                        [state, generation, page, image = std::move (image)] () mutable
                         {
-                            if (safeThis != nullptr
-                                && state->generation.load (std::memory_order_acquire) == generation)
-                            {
-                                safeThis->publishPageRender (generation, page, std::move (image));
-                            }
+                            if (state->generation.load (std::memory_order_acquire) != generation)
+                                return;
+
+                            if (auto* owner = state->owner)
+                                owner->publishPageRender (generation, page, std::move (image));
                         });
                 }
                 catch (const std::bad_alloc&)

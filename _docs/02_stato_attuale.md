@@ -421,7 +421,8 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 - display width/height scambiano gli assi solo per rotazioni 90/270, tramite owner `PdfPage`;
 - cache immagine = rappresentazione derivata; invalidazione deterministica su documento/pagina;
 - `paint()` non esegue parsing/raster: il raster gira su un worker dedicato del widget;
-- publication worker -> Message Thread usa `SafePointer` + generation token, quindi risultati obsoleti vengono scartati;
+- publication worker -> Message Thread usa uno `shared_ptr<RenderState>` + generation atomica;
+  il raw `owner` del RenderState e' letto/scritto soltanto sul Message Thread;
 - cambio/distruzione widget invalida la generation senza attendere il worker; i job obsoleti terminano/scartano il risultato;
 - un load fallito lascia invariati documento corrente, pagina e cache;
 - `currentDocument` usa ownership condivisa; ogni render job cattura il proprio owner;
