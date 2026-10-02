@@ -28,6 +28,9 @@ Teardown:
 3. `CGDataProviderRef`;
 4. backing `MemoryBlock`.
 
+Le release native 1..3 restano serializzate dentro `apiLock`; l'ultima release del potenzialmente
+grande snapshot C++ viene ritirata sotto lock e reclamata dopo lo sblocco.
+
 Il boundary PDFKit supporta sia ARC sia non-ARC.
 
 ## Load
@@ -36,9 +39,11 @@ Il boundary PDFKit supporta sia ARC sia non-ARC.
 
 - file esistente;
 - size > 0 e <= `detail::maxDocumentBytes`;
-- provider CoreGraphics creato dal path;
+- lettura bounded/chunked in snapshot byte owned immutabile;
+- provider CoreGraphics creato sullo snapshot, non sul path mutabile;
 - nuovo documento costruito prima del commit;
-- failure lascia intatto il documento precedente.
+- failure lascia intatto il documento precedente;
+- modifiche successive al file esterno non cambiano il documento gia' aperto.
 
 ### Memory
 
@@ -86,7 +91,7 @@ La /Rotate viene gestita da CoreGraphics, non dal widget.
 
 ## Save
 
-Il renderer e' read-only. Save file/memory copia i byte del provider originale:
+Il renderer e' read-only. Save file/memory copia lo snapshot sorgente immutabile:
 - nessuna ricostruzione con `CGPDFContext`;
 - metadata/outline/form/annotation structure non vengono appiattiti;
 - destinazione memory transazionale;
@@ -94,7 +99,9 @@ Il renderer e' read-only. Save file/memory copia i byte del provider originale:
 
 ## Text extraction
 
-PDFKit e' una cache derivata dagli stessi byte del provider CoreGraphics.
+PDFKit e' una cache derivata dallo stesso snapshot immutabile usato da CoreGraphics.
+Il bridge usa un `CFData` no-copy sopra quei byte; il renderer mantiene esplicitamente il lifetime
+di snapshot, CFData e PDFDocument.
 
 `extractText(pageIndex)` usa `PDFPage.string`:
 - page index validato;

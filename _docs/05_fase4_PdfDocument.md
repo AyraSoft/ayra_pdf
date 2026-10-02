@@ -14,6 +14,8 @@ Factory compile-time:
 Ogni API pubblica esegue solo guardia difensiva e delega 1:1:
 - open file/memory;
 - save file/memory;
+- source byte identity vs file;
+- canonical maximum document-byte budget;
 - close/state;
 - page count/metadata;
 - render;
@@ -33,3 +35,10 @@ Da eseguire esternamente:
 - smoke `open -> getPage -> render -> findText -> extractText -> save`;
 - tutti i target dichiarati;
 - build headless con `AYRA_PDF_HEADLESS=1`.
+
+
+## Source bytes / resource contract
+
+`PdfDocument::getMaximumDocumentBytes()` espone il budget canonico senza obbligare i consumer a
+includere header renderer privati. `sourceBytesEqualFile()` delega al backend il confronto esatto con
+lo snapshot sorgente owned. Il facade non implementa ne' duplica queste policy.

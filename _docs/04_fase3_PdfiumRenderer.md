@@ -28,10 +28,10 @@ File e memory convergono sullo stesso path owned-memory.
 
 ### File
 
-- `InputStream` JUCE;
+- helper byte-source canonico del modulo;
 - size bounded da `detail::maxDocumentBytes`;
 - lettura chunked fuori dalla lock PDFium;
-- byte buffer owned.
+- snapshot `shared_ptr<const MemoryBlock>` owned e immutabile.
 
 ### Memory
 
@@ -70,8 +70,8 @@ Nessun post-process B/R.
 Il renderer e' read-only e possiede sempre i byte sorgente.
 
 Save:
-- snapshot dei backing bytes sotto lock;
-- file I/O fuori dalla lock;
+- cattura di uno `shared_ptr` ai backing bytes sotto lock;
+- file I/O/copia e reclamation del backing ritirato fuori dalla lock process-wide;
 - `saveToFile` usa `replaceWithData`;
 - `saveToMemory` pubblica solo dopo copia riuscita;
 - output byte-preserving.
@@ -116,3 +116,10 @@ V01 deve coprire:
 - multiline search;
 - save byte equality;
 - malformed/truncated PDF.
+
+
+## Source identity
+
+`sourceBytesEqualFile()` cattura lo snapshot immutabile sotto lock PDFium, rilascia subito la lock
+globale e confronta il file byte-per-byte tramite il helper comune. Nessun hash/fingerprint viene
+usato come prova di identita'.
