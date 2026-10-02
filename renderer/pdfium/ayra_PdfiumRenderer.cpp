@@ -20,6 +20,8 @@
 
 #include "../ayra_PdfByteSource.h"
 
+#include <utility>
+
 namespace ayra
 {
 
