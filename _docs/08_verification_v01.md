@@ -11,21 +11,28 @@ Ogni voce va eseguita su target reale e riportata nella SSoT.
 ## 2. Core unit test
 
 `tests/ayra_PdfCoreTests.cpp` viene registrato quando `JUCE_UNIT_TESTS=1`.
+Il runner standalone canonico e' `tests/runner`.
 
-```cpp
-juce::UnitTestRunner runner;
-runner.setAssertOnFailure (false);
-runner.setPassesAreLogged (true);
-runner.runTestsInCategory ("ayra_pdf", 0x7857);
+GUI-capable:
 
-int failures = 0;
-
-for (int i = 0; i < runner.getNumResults(); ++i)
-    if (const auto* result = runner.getResult (i))
-        failures += result->failures;
-
-return failures == 0 ? 0 : 1;
+```bash
+cmake -S tests/runner -B build/pdf-core \
+  -DAYRA_JUCE_DIR=/path/to/JUCE \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/pdf-core --config Release
 ```
+
+Headless:
+
+```bash
+cmake -S tests/runner -B build/pdf-core-headless \
+  -DAYRA_JUCE_DIR=/path/to/JUCE \
+  -DAYRA_PDF_TEST_HEADLESS=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/pdf-core-headless --config Release
+```
+
+Windows/Linux risolvono PDFium tramite il manifest pinned e copiano il runtime accanto al runner.
 
 Copertura fixture generata in memoria:
 - MediaBox/CropBox differenti;
