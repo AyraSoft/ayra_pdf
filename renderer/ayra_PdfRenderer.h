@@ -62,8 +62,15 @@ public:
 
     /** Confronta byte-per-byte lo snapshot sorgente owned con un file.
      *  Nessun hash/fingerprint viene usato come prova d'identita'.
+     *
+     *  Default fail-closed per renderer custom preesistenti: i backend canonici
+     *  Apple/PDFium fanno override con confronto esatto. L'estensione non rende
+     *  astratte subclass che implementavano il contratto precedente.
      */
-    [[nodiscard]] virtual bool sourceBytesEqualFile (const juce::File& file) const noexcept = 0;
+    [[nodiscard]] virtual bool sourceBytesEqualFile (const juce::File&) const noexcept
+    {
+        return false;
+    }
 
     /** Chiude il documento e rilascia le risorse native. */
     virtual void close() noexcept = 0;
