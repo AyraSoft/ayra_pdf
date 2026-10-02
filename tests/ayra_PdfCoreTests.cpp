@@ -740,11 +740,19 @@ public:
             expect (fileDocument.open (sourceFile));
             expect (fileDocument.sourceBytesEqualFile (sourceFile));
 
-            const auto changedBytes = makeWinAnsiTextFixture();
-            expect (changedBytes.getSize() > 0);
+            juce::MemoryBlock sameSizeMutation = fixture;
+            expect (sameSizeMutation.getSize() == fixture.getSize());
+
+            if (sameSizeMutation.getSize() > 16)
+            {
+                auto* bytes = static_cast<std::uint8_t*> (
+                    sameSizeMutation.getData());
+                bytes[16] ^= 0x01u;
+            }
+
             expect (sourceFile.replaceWithData (
-                changedBytes.getData(),
-                changedBytes.getSize()));
+                sameSizeMutation.getData(),
+                sameSizeMutation.getSize()));
 
             expect (! fileDocument.sourceBytesEqualFile (sourceFile));
 

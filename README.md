@@ -156,3 +156,8 @@ tipo e usano un solo percorso di implementazione; non esistono backend, adapter 
 - `_docs/07_deployment.md` - deployment.
 - `_docs/08_verification_v01.md` - runbook V01.
 - `_docs/00_storico.md` - provenance storica, non normativa.
+
+
+The source-identity contract test mutates a byte while preserving the file size, so
+`sourceBytesEqualFile()` is required to perform real byte comparison rather than passing through a
+size-only shortcut.
