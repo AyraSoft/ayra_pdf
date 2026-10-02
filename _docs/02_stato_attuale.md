@@ -292,6 +292,45 @@ Build/test Win/Linux/Android e stress concorrente: **external pending**.
 
 ---
 
+## Change Contract — P02 PDFium save / raster
+
+**Task model**: completare export e rasterizzazione PDFium con la stessa semantica osservabile
+del backend Apple, senza introdurre ricostruzioni del PDF o conversioni pixel ridondanti.
+
+**Canonical owner**:
+- backing bytes P01: source canonica per save;
+- PDFium: raster page content;
+- `renderer/ayra_PdfSafetyLimits.h`: limiti raster condivisi.
+
+**Save contract**:
+- il renderer e' read-only, quindi save = copia byte-preserving dei backing bytes;
+- nessun `FPDF_SaveAsCopy`: ricostruire un documento non modificato e' lavoro inutile e puo'
+  cambiare struttura/metadata;
+- snapshot bytes sotto lock, file I/O fuori dalla lock;
+- failure non modifica la destinazione `MemoryBlock`; file usa `replaceWithData`.
+
+**Render contract**:
+- tutte le chiamate FPDF restano sotto la lock process-wide P01;
+- `FPDF_GetPageWidthF/HeightF` forniscono la display size che incorpora la /Rotate pagina;
+- `FPDF_RenderPageBitmap(... rotate=0 ...)` evita una seconda rotazione;
+- page content only, senza `FPDF_ANNOT`, coerente con CoreGraphics;
+- backdrop bianco;
+- `juce::SoftwareImageType` ARGB con stride/size verificati;
+- Windows/Linux: `FPDFBitmap_BGRA` coincide col layout native `PixelARGB`;
+- Android: aggiungere `FPDF_REVERSE_BYTE_ORDER` per il layout RGBA native JUCE;
+- stessi limiti M02: 16384 px/lato e 64 Mi pixel.
+
+**Acceptance criteria P02**:
+- `saveToFile`, `saveToMemory`, `renderPage` reali e senza `jassertfalse`;
+- save byte-identico ai dati caricati;
+- scale NaN/Inf/<=0 e raster over-budget -> failure deterministica;
+- nessun post-process B/R su Win/Linux; Android usa flag PDFium;
+- tutte le API FPDF di render sono serializzate;
+- static diff audit completato;
+- pixel/orientation/rotation + save equality su Win/Linux/Android: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |

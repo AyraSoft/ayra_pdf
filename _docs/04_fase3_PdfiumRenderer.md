@@ -61,156 +61,35 @@ Questo rende il load transazionale e rimuove narrowing a `int`.
 
 ---
 
-## saveToFile()
+## saveToFile() / saveToMemory() — byte-preserving
 
-```cpp
-bool PdfiumRenderer::saveToFile (const juce::File& destFile) const noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return false;
-#else
-    if (impl->document == nullptr) { return false; }
+P01 carica sempre da backing bytes owned, anche quando l'origine e' un file. Il backend e'
+read-only: P02 salva quindi quei byte direttamente, come il backend Apple.
 
-    // Pattern FPDF_FILEWRITE per scrittura su file
-    struct FileWriter
-    {
-        FPDF_FILEWRITE base; // deve essere il primo campo (C ABI struct extension)
-        FILE* fp;
-
-        static int writeBlock (FPDF_FILEWRITE* self, const void* data, unsigned long sz)
-        {
-            auto* fw = reinterpret_cast<FileWriter*>(self);
-            return (fwrite (data, 1, (size_t)sz, fw->fp) == (size_t)sz) ? 1 : 0;
-        }
-    };
-
-    FILE* fp = fopen (destFile.getFullPathName().toRawUTF8(), "wb");
-    if (fp == nullptr) { return false; }
-
-    FileWriter writer;
-    writer.base.version    = 1;
-    writer.base.WriteBlock = FileWriter::writeBlock;
-    writer.fp              = fp;
-
-    FPDF_BOOL result = FPDF_SaveAsCopy (impl->document,
-                                        reinterpret_cast<FPDF_FILEWRITE*>(&writer), 0);
-    fclose (fp);
-    if (!result) { destFile.deleteFile(); }
-    return result != 0;
-#endif
-}
-```
-
----
-
-## saveToMemory()
-
-```cpp
-bool PdfiumRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return false;
-#else
-    if (impl->document == nullptr) { return false; }
-
-    destData.reset();
-
-    struct MemWriter
-    {
-        FPDF_FILEWRITE  base;    // primo campo — C ABI
-        juce::MemoryBlock* dest;
-
-        static int writeBlock (FPDF_FILEWRITE* self, const void* data, unsigned long sz)
-        {
-            auto* mw = reinterpret_cast<MemWriter*>(self);
-            mw->dest->append (data, (size_t)sz);
-            return 1; // successo
-        }
-    };
-
-    MemWriter writer;
-    writer.base.version    = 1;
-    writer.base.WriteBlock = MemWriter::writeBlock;
-    writer.dest            = &destData;
-
-    return FPDF_SaveAsCopy (impl->document,
-                            reinterpret_cast<FPDF_FILEWRITE*>(&writer), 0) != 0;
-#endif
-}
-```
+- niente `FPDF_SaveAsCopy`;
+- snapshot `MemoryBlock` sotto la lock che protegge lo stato dell'istanza;
+- `saveToFile`: I/O tramite `replaceWithData` dopo aver rilasciato la lock PDFium;
+- `saveToMemory`: replacement costruito prima della pubblicazione;
+- fallimento di allocazione/I/O non produce output parziale.
 
 ---
 
 ## renderPage() -> juce::Image
 
-PDFium produce pixel in formato `BGRA` (Blue, Green, Red, Alpha). `juce::Image::ARGB`
-usa il formato `ARGB` (Alpha, Red, Green, Blue) in memoria. E' necessario swappare B e R.
+PDFium renderizza direttamente nel backing buffer di un `juce::SoftwareImageType`.
 
-`FPDFBitmap_CreateEx` con `FPDFBitmap_BGRA` usa il buffer esterno di `juce::Image::BitmapData`
-direttamente (niente copia intermedia). Lo swap B<->R avviene in-place dopo il rendering.
+Contratto corrente:
+- `FPDF_GetPageWidthF/HeightF` produce la display size gia' coerente con la rotazione della pagina;
+- `FPDF_RenderPageBitmap` riceve `rotate = 0`, quindi non aggiunge una seconda rotazione;
+- `FPDFBitmap_BGRA` coincide con `juce::PixelARGB` su Windows/Linux little-endian;
+- su Android il layout JUCE e' RGB[A], quindi si usa `FPDF_REVERSE_BYTE_ORDER`;
+- nessun loop di swap post-render;
+- backdrop bianco;
+- niente `FPDF_ANNOT`: il contratto corrente renderizza page content, come CoreGraphics;
+- `FPDF_RENDER_LIMITEDIMAGECACHE` limita la cache immagini del render;
+- scale, dimensioni, pixel count, stride e buffer size sono validati con gli stessi limiti M02.
 
-```cpp
-juce::Image PdfiumRenderer::renderPage (int pageIndex, float scale) noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return {};
-#else
-    if (impl->document == nullptr) { return {}; }
-
-    FPDF_PAGE page = FPDF_LoadPage (impl->document, pageIndex);
-    if (page == nullptr) { return {}; }
-
-    const int w = (int)(FPDF_GetPageWidth  (page) * scale);
-    const int h = (int)(FPDF_GetPageHeight (page) * scale);
-
-    if (w <= 0 || h <= 0) { FPDF_ClosePage (page); return {}; }
-
-    juce::Image img (juce::Image::ARGB, w, h, true);
-    {
-        juce::Image::BitmapData bmp (img, juce::Image::BitmapData::writeOnly);
-
-        // Usa il buffer di juce::Image come backing store per PDFium (zero copia)
-        FPDF_BITMAP bitmap = FPDFBitmap_CreateEx (
-            w, h,
-            FPDFBitmap_BGRA,        // formato PDFium
-            bmp.data,               // buffer diretto
-            (int) bmp.lineStride);  // stride in byte
-
-        FPDFBitmap_FillRect (bitmap, 0, 0, w, h, 0xFFFFFFFF); // sfondo bianco
-
-        FPDF_RenderPageBitmap (
-            bitmap, page,
-            0, 0, w, h,             // offset e dimensioni nel bitmap
-            0,                      // rotazione (0 = nessuna)
-            FPDF_ANNOT | FPDF_LCD_TEXT); // flag: renderizza annotazioni + ClearType
-
-        FPDFBitmap_Destroy (bitmap);
-
-        // Swap BGRA -> ARGB in-place (B e R sono in posizioni diverse)
-        // BGRA in memoria: [B][G][R][A]
-        // ARGB in memoria: [A][R][G][B]  (ma juce::Image::ARGB su little-endian = [B][G][R][A])
-        // In realta' su little-endian, juce::Image::ARGB == FPDFBitmap_BGRA -> nessun swap necessario
-        // Verificare con: Image::BitmapData bmp(img, ...); bmp.getPixelColour(0,0).getRed() == atteso
-        //
-        // Se lo swap e' necessario (macchine big-endian o configurazioni diverse):
-        for (int y = 0; y < h; ++y)
-        {
-            auto* px = reinterpret_cast<uint8_t*>(bmp.getLinePointer (y));
-            for (int x = 0; x < w; ++x, px += 4)
-                std::swap (px[0], px[2]); // swap B e R
-        }
-    }
-
-    FPDF_ClosePage (page);
-    return img;
-#endif
-}
-```
-
-**Nota sullo swap B/R**: PDFium e juce::Image usano entrambi BGRA su little-endian (x86, ARM).
-Lo swap potrebbe non essere necessario. Verificare con un documento di test (pixel rosso puro
-`#FF0000`) e controllare che `img.getPixelAt(x,y).getRed() == 255`. Se il risultato e' `getBlue() == 255`,
-lo swap e' necessario. Se il rendering e' corretto senza swap, rimuovere il loop per performance.
+La verifica runtime deve usare color bars + marker ai quattro angoli + /Rotate 0/90/180/270.
 
 ---
 
@@ -437,12 +316,12 @@ void PdfiumRenderer::close() noexcept
 - [x] Rimosso fallback `AYRA_PDFIUM_AVAILABLE/__has_include`: backend/link obbligatori
 - [x] `loadFromFile` — bounded JUCE read -> percorso memory canonico
 - [x] `loadFromMemory` — `FPDF_LoadMemDocument64`, commit transazionale
-- [ ] `saveToFile` — `FPDF_SaveAsCopy` con `FileWriter` struct
-- [ ] `saveToMemory` — `FPDF_SaveAsCopy` con `MemWriter` struct
+- [ ] `saveToFile` — snapshot byte-preserving + `replaceWithData`
+- [ ] `saveToMemory` — snapshot byte-preserving transazionale
 - [x] `close` — `FPDF_CloseDocument` prima del reset backing data
 - [x] `getPageCount` — `FPDF_GetPageCount` serializzato
 - [x] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
-- [ ] `renderPage` — `FPDFBitmap_CreateEx` + `FPDF_RenderPageBitmap` + swap B/R se necessario
+- [ ] `renderPage` — bounded direct bitmap; Android reverse-byte-order flag
 - [ ] `extractText` — `FPDFText_LoadPage` + `FPDFText_GetText` + UTF-16LE -> juce::String
 - [ ] `findText` — `FPDFText_FindStart/Next/Close` + `FPDFText_GetCharBox`
 - [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
