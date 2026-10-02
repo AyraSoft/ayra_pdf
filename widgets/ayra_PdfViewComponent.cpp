@@ -861,56 +861,10 @@ void PdfViewComponent::clampTopLeft()
 juce::Rectangle<float> PdfViewComponent::pdfBoundsToWidget (const PdfPage& page,
                                                             juce::Rectangle<float> pdfBounds) const
 {
-    if (!page.isValid() || pdfBounds.isEmpty())
+    const auto displayBounds = page.getDisplayBounds (pdfBounds);
+
+    if (displayBounds.isEmpty())
         return {};
-
-    const auto clipped = pdfBounds.getIntersection (page.bounds);
-
-    if (clipped.isEmpty())
-        return {};
-
-    const float localX = clipped.getX() - page.bounds.getX();
-    const float localBottom = clipped.getY() - page.bounds.getY();
-    const float width = clipped.getWidth();
-    const float height = clipped.getHeight();
-    const float pageWidth = page.bounds.getWidth();
-    const float pageHeight = page.bounds.getHeight();
-
-    juce::Rectangle<float> displayBounds;
-
-    switch (page.rotation)
-    {
-        case 0:
-            displayBounds = { localX,
-                              pageHeight - (localBottom + height),
-                              width,
-                              height };
-            break;
-
-        case 90:
-            displayBounds = { localBottom,
-                              localX,
-                              height,
-                              width };
-            break;
-
-        case 180:
-            displayBounds = { pageWidth - (localX + width),
-                              localBottom,
-                              width,
-                              height };
-            break;
-
-        case 270:
-            displayBounds = { pageHeight - (localBottom + height),
-                              pageWidth - (localX + width),
-                              height,
-                              width };
-            break;
-
-        default:
-            return {};
-    }
 
     return displayBounds * currentZoom + topLeft;
 }

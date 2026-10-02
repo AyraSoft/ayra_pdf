@@ -146,7 +146,20 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 - ASan/UBSan dove disponibili;
 - TSan sul protocollo worker/widget e PDFium, se compatibile.
 
+## V01 preparation
+
+Aggiunto `tests/ayra_PdfCoreTests.cpp`, incluso dal root solo con `JUCE_UNIT_TESTS`.
+Il test genera in memoria una fixture PDF ASCII con:
+- 4 pagine /Rotate 0/90/180/270;
+- MediaBox e CropBox differenti;
+- testo Type1 standard;
+- xref/trailer reali.
+
+Copre geometry pura, visible box, open/render/search/extract, save byte-preserving,
+load transazionale e input invalidi. Non e' stato eseguito in questa sessione.
+
 ## Completion gate
 
-Il codice e' **implementation-complete staticamente**. La release non va dichiarata
-production-verified finche' V01 non viene eseguito in un ambiente con build/test/CI.
+Il codice e' **implementation-complete staticamente** e V01 ha ora uno smoke test
+cross-backend riproducibile. La release non va dichiarata production-verified finche'
+V01 non viene eseguito in un ambiente con build/test/CI.

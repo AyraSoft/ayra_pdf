@@ -45,6 +45,12 @@ struct PdfPage
         return swapsAxes ? juce::Point<float> { bounds.getHeight(), bounds.getWidth() }
                          : juce::Point<float> { bounds.getWidth(), bounds.getHeight() };
     }
+
+    /** Converte bounds dal PDF page space (lower-left/Y-up) al display page space
+     *  logico (top-left/Y-down), applicando /Rotate ma non zoom o viewport offset.
+     *  L'input viene prima clippato al visible page box canonico.
+     */
+    [[nodiscard]] juce::Rectangle<float> getDisplayBounds (juce::Rectangle<float> pageSpaceBounds) const noexcept;
 };
 
 } // namespace ayra

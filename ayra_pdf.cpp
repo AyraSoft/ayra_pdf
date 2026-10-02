@@ -46,10 +46,15 @@
 
 //==============================================================================
 // ENGINE
+#include "engine/ayra_PdfPage.cpp"
 #include "engine/ayra_PdfDocument.cpp"
 
 //==============================================================================
 // GUI
 #ifndef AYRA_PDF_HEADLESS
   #include "widgets/ayra_PdfViewComponent.cpp"
+#endif
+
+#if JUCE_UNIT_TESTS
+  #include "tests/ayra_PdfCoreTests.cpp"
 #endif
