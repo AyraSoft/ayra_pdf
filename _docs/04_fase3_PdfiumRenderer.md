@@ -2,7 +2,7 @@
 
 **Autore**: Ayra Soft  
 **Data creazione**: 2026-05-26  
-**Stato**: in attesa di implementazione
+**Stato operativo**: vedere `_docs/02_stato_attuale.md` (source of truth)
 
 ---
 

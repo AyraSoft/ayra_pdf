@@ -2,7 +2,7 @@
 
 **Autore**: Ayra Soft  
 **Data creazione**: 2026-05-26  
-**Stato**: in attesa di implementazione
+**Stato operativo**: vedere `_docs/02_stato_attuale.md` (source of truth)
 
 ---
 
@@ -432,7 +432,7 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
         PdfSearchResult result;
         result.pageIndex = p;
         result.text      = query;
-        result.bounds    = {}; // TODO: implementare tracking text matrix per bounds precisi
+        result.bounds    = {}; // DESIGN NOTE STORICA: NON accettabile come implementazione finale
         results.add (result);
     }
 
@@ -440,7 +440,11 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
 }
 ```
 
-**Nota**: per bounds precisi su macOS sarebbe necessario implementare un CGPDFScanner completo
+**Gate corrente (Master / Completion Integrity):** un risultato con bounds vuoti o approssimati
+non puo' essere dichiarato completo. M04 deve produrre bounds semanticamente validi oppure
+modificare esplicitamente il contratto nell'owner canonico prima dell'implementazione.
+
+**Nota tecnica**: per bounds precisi su macOS sarebbe necessario implementare un CGPDFScanner completo
 che traccia la text matrix corrente (operatori `Td`, `TD`, `Tm`, `T*`, `BT`, `ET`) e la
 converte in coordinate viewport. Su PDFium questo e' fornito dall'API `FPDFText_GetCharBox`.
 Se i bounds precisi di ricerca sono prioritari, valutare l'uso di PDFium anche su macOS.

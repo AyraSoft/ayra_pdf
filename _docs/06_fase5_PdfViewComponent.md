@@ -2,7 +2,7 @@
 
 **Autore**: Ayra Soft  
 **Data creazione**: 2026-05-26  
-**Stato**: in attesa (dipende da Fase 4)
+**Stato operativo**: vedere `_docs/02_stato_attuale.md` (source of truth)
 
 ---
 
@@ -18,7 +18,7 @@ Deliverable:
 - Pinch gesture su trackpad macOS
 - Navigazione pagine
 - Evidenziazione risultati di ricerca (overlay)
-- Backward compat: tutte le firme API di `PDFComponent` implementate
+- API current-only: `PdfViewComponent` e' il solo widget pubblico dopo il cutover; nessun alias legacy
 
 ---
 
@@ -293,43 +293,17 @@ juce::Rectangle<float> PdfViewComponent::getCurrentPageBounds() const
 
 ---
 
-## Attivazione alias backward compat (fine Fase 5)
+## Cutover current-only e rimozione legacy
 
-Una volta che `PdfViewComponent` e' completamente implementato e testato:
+Il vecchio piano `using PDFComponent = PdfViewComponent` e' annullato dal contratto current-only.
 
-**In `ayra_pdf.h`:**
-```cpp
-// 1. Rimuovere:
-#include "pdf_component/PDFComponent.h"
-
-// 2. Decommentare:
-namespace ayra { using PDFComponent = PdfViewComponent; }
-```
-
-**In `ayra_pdf.cpp`:**
-```cpp
-// Rimuovere dal blocco macOS:
-#include "pdf_component/Mac_PDF_core/PDFView.m"
-#include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
-
-// Rimuovere dal blocco widgets:
-#include "pdf_component/PDFComponent.cpp"  // LEGACY backward compat
-```
-
----
-
-## Rimozione legacy (Fase 6)
-
-Dopo aver verificato che tutto il codice che usava `PDFComponent` compila e funziona
-con l'alias `using PDFComponent = PdfViewComponent`:
-
-1. Eliminare la cartella `pdf_component/` intera
-2. Verificare che nessun file in altri moduli o nell'app includa direttamente `PDFComponent.h`
-   (deve fallire con errore di compilazione chiaro, non silenzioso)
-3. Rimuovere `#include <Cocoa/Cocoa.h>` da `ayra_pdf.cpp` se non piu' necessario
-   (il rendering CoreGraphics tramite `MacPdfRenderer` richiede solo `CoreGraphics.h`)
-
----
+Quando `PdfViewComponent` e' completo e la verification esterna e' disponibile:
+1. ripetere code search dei consumer Ayra nello stesso HEAD;
+2. aggiornare eventuali consumer correnti direttamente a `PdfViewComponent`;
+3. rimuovere l'include `pdf_component/PDFComponent.h` da `ayra_pdf.h`;
+4. rimuovere gli include legacy da `ayra_pdf.cpp`;
+5. eliminare `pdf_component/` nello stesso cutover;
+6. non lasciare alias, adapter, deprecated symbol o fallback.
 
 ## Checklist Fase 5
 
@@ -354,6 +328,6 @@ con l'alias `using PDFComponent = PdfViewComponent`:
 - [ ] Implementare `mouseDown`, `mouseDrag`, `mouseWheelMove`, `mouseMagnify`
 - [ ] Implementare `setDocument()` (gia' parzialmente presente)
 - [ ] Verificare che `addListener`/`removeListener` funzionino
-- [ ] Attivare alias `using PDFComponent = PdfViewComponent` in `ayra_pdf.h`
+- [ ] Preparare il cutover current-only: nessun alias; rimozione legacy nel microstep C01
 - [ ] Test macOS: aprire file, navigare pagine, zoom pinch/scroll, pan drag
-- [ ] Test backward compat: codice che usava `PDFComponent` compila senza modifiche
+- [ ] Audit call-site current-only: nessun consumer resta su `PDFComponent` prima di C01

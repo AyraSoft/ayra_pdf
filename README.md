@@ -53,9 +53,9 @@ ayra_pdf/
 
 | Layer | Dipendenze | Headless | Descrizione |
 |-------|-----------|---------|-------------|
-| `engine/` | `juce_core` | ✓ | Stato documento, navigazione, ricerca, estrazione testo |
-| `renderer/` | `juce_core` + CoreGraphics o PDFium | ✓ | Rasterizzazione pagine in `juce::Image` |
-| `widgets/` | `juce_gui_basics` + engine + renderer | ✗ | Componenti visuali interattivi |
+| `engine/` | core + tipi grafici usati dall'API (`juce::Image`) | senza finestre | Stato documento, navigazione, ricerca, estrazione testo |
+| `renderer/` | tipi grafici JUCE + CoreGraphics o PDFium | senza finestre | Rasterizzazione pagine in `juce::Image` |
+| `widgets/` | JUCE GUI + engine + renderer | no | Componenti visuali interattivi |
 
 L'engine non include mai header GUI. Un agente server-side o un renderer offline possono usare solo `engine/` + `renderer/` senza aprire alcuna finestra.
 
@@ -264,34 +264,20 @@ public:
 
 ---
 
-## Backward Compatibility
+## Current-only contract
 
-La v1 esponeva `ayra::PDFComponent`. Tutta l'API e' identica in `PdfViewComponent`. A partire dalla Fase 5 sara' aggiunto l'alias:
+Il contratto corrente segue `AYRA_AI_ENGINEERING_MASTER.md`: **nessuna retrocompatibilita'
+Ayra preventiva**. Il vecchio `PDFComponent` e' presente solo perche' oggi e' il path
+funzionante mentre la v2 e' incompleta; non e' un'API da preservare.
 
-```cpp
-namespace ayra { using PDFComponent = PdfViewComponent; }
-```
+Al cutover:
+- `PdfViewComponent` sara' l'unico widget pubblico corrente;
+- `pdf_component/` verra' rimosso;
+- NON verra' introdotto `using PDFComponent = PdfViewComponent`;
+- non resteranno adapter, fallback o doppio percorso legacy/v2;
+- l'audit dei call-site AyraSoft verra' ripetuto nello stesso cambiamento.
 
-Fino alla Fase 5, `PDFComponent` rimane nella cartella `pdf_component/` con le stesse firme. I consumer esistenti non richiedono alcuna modifica.
-
-**Firme identiche tra v1 e v2:**
-
-| Metodo v1 (PDFComponent) | Metodo v2 (PdfViewComponent) |
-|---|---|
-| `loadDocument(juce::String)` | `loadDocument(const juce::String&)` |
-| `setPageNumber(int)` | `setPageNumber(int)` |
-| `getTotPagesNum()` | `getTotPagesNum()` |
-| `getCurrentPageOnScreen()` | `getCurrentPageOnScreen()` |
-| `setCurrentPageZoom(float, Point)` | `setCurrentPageZoom(float, Point)` |
-| `exportCurrentDocument(name, path)` | `exportCurrentDocument(name, path)` |
-| `loadDocumentFromMemoryBlock(void*, int)` | `loadDocumentFromMemoryBlock(void*, int)` |
-| `getMemoryBlockFromDocument(MemoryBlock&)` | `getMemoryBlockFromDocument(MemoryBlock&)` |
-
-**Aggiunte in v2 non presenti in v1:**
-- `Listener` formale con `addListener`/`removeListener`
-- Callback `std::function` (onPageChanged, onDocumentLoaded, onDocumentClosed)
-- `LookAndFeel` customizzabile
-- `PdfDocument` headless separato dal widget
+Lo stato e il piano canonico sono in `_docs/02_stato_attuale.md`.
 
 ---
 
@@ -403,66 +389,30 @@ Modificare `PDFIUM_VERSION` in `scripts/setup_pdfium.sh` / `setup_pdfium.ps1`, p
 
 ## Headless Mode
 
-Per build server-side, CI headless o renderer offline, definire:
+`AYRA_PDF_HEADLESS` **oggi significa soltanto "escludi i widget dal codice del modulo"**.
+Non significa ancora "nessuna dipendenza JUCE GUI": `ayra_pdf.h` include `juce_gui_extra`
+e la metadata del modulo dichiara quella dipendenza.
 
-```cpp
-#define AYRA_PDF_HEADLESS
-```
-
-Prima di includere il modulo (o come define nel Projucer / CMakeLists.txt).
-
-Con questa define:
-- I widget in `widgets/` non vengono inclusi.
-- La dipendenza da `juce_gui_basics` e `juce_gui_extra` non e' necessaria.
-- Solo `juce_core` e il backend renderer sono richiesti.
-
-Esempio uso headless (batch rendering):
-
-```cpp
-// Nessuna GUI richiesta
-#define AYRA_PDF_HEADLESS
-#include <ayra_pdf/ayra_pdf.h>
-
-void renderPdfToPng (const juce::File& pdfFile, const juce::File& outDir)
-{
-    ayra::PdfDocument doc;
-    if (!doc.open (pdfFile)) { return; }
-
-    for (int i = 0; i < doc.getPageCount(); ++i)
-    {
-        juce::Image img = doc.renderPage (i, 2.0f);
-        juce::File out = outDir.getChildFile ("page_" + juce::String (i + 1) + ".png");
-        juce::PNGImageFormat png;
-        juce::FileOutputStream stream (out);
-        png.writeImageToStream (img, stream);
-    }
-}
-```
+Il codice puo' quindi essere usato senza aprire finestre, ma il vecchio claim dependency-minimal
+headless non e' ancora realizzato. La risoluzione e' il microstep **H01** nel documento
+canonico `_docs/02_stato_attuale.md`.
 
 ---
 
 ## Fasi di Sviluppo
 
-| Fase | Stato | Contenuto |
-|------|-------|-----------|
-| Fase 1 — Legacy v1 | ✓ completa | `pdf_component/PDFComponent` con backend macOS (CoreGraphics) funzionante, stub Windows/Linux |
-| Fase 2 — Engine headless | in progress | `engine/PdfDocument`, `PdfPage`, `PdfSearchResult` — separazione logica da GUI |
-| Fase 3 — Renderer layer | in progress | `renderer/PdfRenderer` interfaccia pura + `MacPdfRenderer` (CoreGraphics) + `PdfiumRenderer` (PDFium) |
-| Fase 4 — Widget v2 | pianificata | `widgets/PdfViewComponent` — sostituto di `PDFComponent` con LookAndFeel, Listener, std::function |
-| Fase 5 — Alias e cleanup | pianificata | `using PDFComponent = PdfViewComponent`, rimozione `pdf_component/`, aggiornamento dipendenze Projucer |
+La numerazione storica "Fase 1...7" resta nei documenti tecnici come provenance, ma non
+e' piu' la source of truth dell'avanzamento. Il piano operativo corrente usa microstep
+(`S00`, `M01`...`V01`) ed e' mantenuto esclusivamente in `_docs/02_stato_attuale.md`.
 
-**Stato attuale (Fase 1):**
-- macOS / iOS: rendering funzionante via CoreGraphics (`MacPDFViewComponent` wrappa `PDFView` Objective-C)
-- Windows: stub con parse minimale PDF + rendering placeholder (nessun backend reale)
-- Linux: stub con chiamata a `pdftocairo` (dipendenza di sistema, non inclusa)
-- Android: non implementato
-
-**Issues noti nella v1 (vedi commenti in `PDFComponent.h`):**
-- macOS: gestione zoom dal punto di handle non completamente corretta
-- macOS: gesture multi-touch non implementate
-- macOS: scroll quando il documento e' piu' grande della view non implementato
-- macOS: inspector/ricerca pagina non implementato
-- Windows / Linux / Android: tutto da implementare con PDFium (Fase 3)
+Sintesi al 2026-10-02:
+- skeleton v2 e API: presenti;
+- renderer Apple v2: implementazione in avvio;
+- renderer PDFium: stub;
+- `PdfDocument`: stub;
+- `PdfViewComponent`: parziale;
+- legacy macOS/iOS: unico path funzionante, destinato a rimozione current-only;
+- build/test/CI: non eseguibili nell'ambiente AI corrente; verification esterna richiesta.
 
 ---
 

@@ -2,7 +2,11 @@
 
 **Autore**: Ayra Soft  
 **Data creazione**: 2026-05-26  
-**Stato**: refactoring attivo (v2.0 in costruzione, v1 legacy ancora attivo)
+**Stato**: DOCUMENTO STORICO / NON NORMATIVO — stato corrente in `_docs/02_stato_attuale.md`
+
+> Le decisioni e i piani riportati qui sotto descrivono il percorso storico. In caso di
+> conflitto prevalgono il Master e `_docs/02_stato_attuale.md`. Il vecchio piano di
+> backward compatibility/alias `PDFComponent` non e' piu' normativo: il contratto e' current-only.
 
 ---
 

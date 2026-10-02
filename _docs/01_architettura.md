@@ -193,48 +193,19 @@ std::function:
 
 ---
 
-## Backward compatibility
+## Current-only cutover
 
-### Stato attuale (Fasi 1-4 incomplete)
+Il legacy `pdf_component/` e' ancora incluso perche' e' l'unico path funzionante mentre
+la v2 e' incompleta. Questa coesistenza e' debito di migrazione, non un contratto.
 
-`PDFComponent` legacy e' ancora l'unica implementazione funzionante su macOS.
-`PdfViewComponent` e i renderer sono skeleton con `jassertfalse` nei metodi non ancora implementati.
+Il cutover finale e' atomico:
+1. completare e verificare renderer, `PdfDocument` e `PdfViewComponent`;
+2. ripetere l'audit dei call-site Ayra;
+3. rimuovere include e implementazioni `pdf_component/`;
+4. NON introdurre alias `PDFComponent`, adapter o fallback;
+5. aggiornare eventuali consumer correnti nello stesso cambiamento.
 
-**Inclusione corrente in ayra_pdf.h:**
-```cpp
-#include "pdf_component/PDFComponent.h"   // LEGACY, ancora attivo
-// using PDFComponent = PdfViewComponent; // commentato — attivare in Fase 5
-```
-
-**Inclusione corrente in ayra_pdf.cpp:**
-```cpp
-#include "pdf_component/Mac_PDF_core/PDFView.m"
-#include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
-#include "renderer/mac/ayra_MacPdfRenderer.mm"  // skeleton
-// ...
-#include "pdf_component/PDFComponent.cpp"       // LEGACY ancora incluso
-```
-
-### Piano di migrazione
-
-| Fase | Azione | Quando |
-|---|---|---|
-| Fase 2 | MacPdfRenderer completato | Prima priorita' macOS |
-| Fase 3 | PdfiumRenderer completato | Priorita' Win/Linux |
-| Fase 4 | PdfDocument collegato ai renderer | Dipende da 2 e 3 |
-| Fase 5 | PdfViewComponent completo, alias attivato | Dipende da 4 |
-| Fase 6 | `pdf_component/` eliminata | Dopo verifica in produzione |
-
-### Come attivare l'alias (Fase 5)
-
-In `ayra_pdf.h`:
-1. Commentare `#include "pdf_component/PDFComponent.h"`
-2. Decommentare `namespace ayra { using PDFComponent = PdfViewComponent; }`
-
-In `ayra_pdf.cpp`:
-1. Rimuovere include di `PDFView.m`, `MacPDFComponent.mm`, `PDFComponent.cpp`
-
----
+Lo stato operativo appartiene esclusivamente a `_docs/02_stato_attuale.md`.
 
 ## Headless mode
 

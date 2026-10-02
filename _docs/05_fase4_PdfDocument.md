@@ -2,7 +2,7 @@
 
 **Autore**: Ayra Soft  
 **Data creazione**: 2026-05-26  
-**Stato**: in attesa (dipende da Fase 2 e Fase 3)
+**Stato operativo**: vedere `_docs/02_stato_attuale.md` (source of truth)
 
 ---
 

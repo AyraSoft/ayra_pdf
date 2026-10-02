@@ -1,10 +1,105 @@
 # Stato Attuale — ayra_pdf
 
 **Autore**: Ayra Soft  
-**Data aggiornamento**: 2026-05-26
+**Data aggiornamento**: 2026-10-02
 
 ---
 
+> **AUTORITA' DEL DOCUMENTO** — Questo file e' la **Single Source of Truth** per stato,
+> priorita', dipendenze e avanzamento del refactoring `ayra_pdf`. I documenti
+> `03_fase2_...` ... `06_fase5_...` sono specifiche tecniche di area e NON possiedono
+> lo stato operativo. `00_storico.md` e' provenance storica.
+>
+> **Guideline normativa** — Ogni modifica segue
+> `AyraSoft/ayra_multiverse/_doc/AYRA_AI_ENGINEERING_MASTER.md`: correctness, SSoT,
+> module-first, current-only, minimal architectural diff, repository safety e verification gate.
+>
+> **Limite di questa sessione** — si possono leggere/scrivere codice e documentazione,
+> ma **non si possono lanciare build, test binari o CI**. Ogni microstep distingue quindi
+> `static-audited` da `externally-verified`.
+
+## Baseline verificata
+
+Ricognizione effettuata su `main@fc60d44e325265b85a1616205157ee871d95350a` prima
+dell'avvio dell'implementazione del 2026-10-02.
+
+- L'architettura v2 (engine / renderer / widget) esiste come skeleton.
+- Il solo path funzionale e' il legacy macOS/iOS basato su `PDFComponent` / CoreGraphics.
+- `MacPdfRenderer`, `PdfiumRenderer`, `PdfDocument` e gran parte di `PdfViewComponent` hanno stub.
+- Code search AyraSoft non ha trovato consumer di `PDFComponent` fuori da questo repository;
+  l'audit va ripetuto immediatamente prima del cutover.
+- Il vecchio piano `using PDFComponent = PdfViewComponent` e' annullato: il Master impone current-only.
+- `AYRA_PDF_HEADLESS` oggi esclude i widget, ma il modulo include/dichiara ancora `juce_gui_extra`;
+  quindi il vecchio claim "zero dipendenze GUI" non e' attualmente vero.
+
+## Roadmap canonica a microstep
+
+| ID | Area | Deliverable | Dipendenze | Stato |
+|---|---|---|---|---|
+| **S00** | Governance/docs | Stato canonico, roadmap, current-only, limiti verifica | - | **done (static)** |
+| **M01** | Mac renderer | Lifecycle, load file/memory, close, page count/metadata | S00 | **in progress** |
+| **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | pending |
+| **M03** | Mac renderer | Save file + save memory, round-trip semantics senza `dummyURL` | M01 | pending |
+| **M04** | Mac renderer | Estrazione testo + ricerca con geometria contrattualmente corretta | M01 | pending |
+| **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | pending |
+| **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | pending |
+| **P02** | PDFium | Render + save file/memory | P01 | pending |
+| **P03** | PDFium | Extract/search con bounds esatti | P01 | pending |
+| **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | pending |
+| **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | pending |
+| **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | pending |
+| **H01** | Module contract | Rendere esplicito e corretto il contratto headless/dependencies JUCE | D02 | pending |
+| **C01** | Current-only cutover | Rimuovere `pdf_component/`, include legacy e ogni alias/fallback | W02,H01 | pending |
+| **V01** | Verification esterna | Build/test target dichiarati + sanitizer dove applicabile | C01 | external pending |
+
+### Regole di avanzamento
+
+1. Un microstep cambia solo il canonical owner della responsabilita' coinvolta.
+2. Il legacy e' reference read-only, non una seconda implementazione da mantenere sincronizzata.
+3. Una funzione completata perde il relativo `jassertfalse`/TODO; niente placeholder mascherati.
+4. PDF, indici, size e path sono input non affidabili: validare prima di allocare/indicizzare.
+5. Render/parse/save non sono realtime-safe e non vanno chiamati dal processBlock.
+6. Nessun `PdfSearchResult` con bounds finti/vuoti viene dichiarato completo.
+7. Fine microstep: diff audit statico su correctness, ownership, lifetime, scope, regressioni.
+8. Build/test/CI rimangono **external pending** in questa sessione.
+
+## Change Contract — M01 MacPdfRenderer lifecycle/load/metadata
+
+**Task model**: rendere reale il possesso del documento CoreGraphics senza introdurre stato viewport/GUI.
+
+**Canonical owner**: `renderer/mac/ayra_MacPdfRenderer.mm` possiede `CGPDFDocumentRef` e
+l'eventuale backing memory necessaria per un documento aperto da buffer.
+
+**Existing reusable path**: il legacy `MacPDFComponent.mm` e' solo riferimento read-only;
+bug e ownership legacy non vengono copiati automaticamente.
+
+**Expected files**:
+- `renderer/mac/ayra_MacPdfRenderer.mm` — implementazione;
+- `renderer/mac/ayra_MacPdfRenderer.h` — solo allineamento del contratto/documentazione;
+- questo file — stato a fine microstep.
+
+**Forbidden ownership changes**:
+- nessun zoom/pan/current-page nel renderer;
+- nessuna logica widget in engine/renderer;
+- nessuna modifica a JUCE o third-party;
+- nessun alias/compatibility layer.
+
+**Invariants**:
+- `close()` idempotente e unico punto di rilascio del documento;
+- ogni successful load sostituisce deterministicamente il documento precedente;
+- backing buffer del load-from-memory vivo almeno quanto il documento;
+- API pagina 0-based, CoreGraphics 1-based confinato all'adapter;
+- indice negativo/out-of-range controllato prima di cast unsigned;
+- nessun leak di documento/provider; nessun accesso GUI.
+
+**Acceptance criteria M01**:
+- `loadFromFile`, `loadFromMemory`, `close`, `isLoaded`, `getPageCount`, `getPage` reali;
+- nessun `jassertfalse` in tali funzioni;
+- input invalidi non lasciano stato parzialmente caricato;
+- `getPage` ritorna indice, bounds e rotazione coerenti;
+- static audit completato; build/test **external pending**.
+
+---
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
