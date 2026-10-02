@@ -161,6 +161,12 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 Aggiunto `tests/ayra_PdfCoreTests.cpp`, incluso dal root solo con `JUCE_UNIT_TESTS`.
 Durante il preflight statico sono stati inoltre chiusi:
 - compatibilita' source-level `PDFComponent` protetta da compile guards e sentinel test;
+- source bytes immutabili e owned su Apple/PDFium, con confronto file byte-esatto canonico;
+- reclamation dei grandi snapshot byte fuori dalle lock native/process-wide quando possibile;
+- PDFKit text cache no-copy sopra lo snapshot owned Apple;
+- save file/memory byte-preserving e failure transazionale protetti da contract test;
+- CTest runner standalone GUI/headless con ASan/UBSan/TSan configurabili;
+- provisioning PDFium con manifest come owner anche di asset list e ABI Android;
 - metadata pagina corrente indipendenti dal completamento del raster asincrono;
 - ownership PDFKit compatibile ARC/non-ARC;
 - visible page box uniforme tra Apple/PDFium (MediaBox intersect CropBox);
@@ -182,15 +188,14 @@ Non e' stato eseguito in questa sessione.
 
 ## PDFium provisioning
 
-Provisioning Windows/Linux/Android ora usa `third_party/pdfium/pdfium_manifest.json` come SSoT: `chromium/7857`, asset dinamici per architettura e SHA-256 ufficiali. Gli installer non usano piu' `latest` e non contengono percorsi PDFium Apple obsoleti.
+Provisioning Windows/Linux/Android ora usa `third_party/pdfium/pdfium_manifest.json` come SSoT: `chromium/7857`, asset dinamici per architettura e SHA-256 ufficiali. Gli installer non usano piu' `latest` e non contengono percorsi PDFium Apple obsoleti. Le ABI Android e l'enumerazione `--arch all` sono derivate dal manifest, senza tabelle parallele in CMake/script.
 
 Runbook: `_docs/08_verification_v01.md`.
 
 ## Completion gate
 
-Il codice e' **implementation-complete staticamente** e V01 ha ora uno smoke test
-cross-backend riproducibile. Le specifiche backend 03/04 sono state riallineate al codice corrente. La release non va dichiarata production-verified finche'
-V01 non viene eseguito in un ambiente con build/test/CI.
+Il codice e' **implementation-complete staticamente** e V01 ha runner CTest riproducibili per core GUI/headless e PdfViewer, con sanitizer configurabili dove supportati. Le specifiche backend 03/04 sono state riallineate al codice corrente. La release non va dichiarata production-verified finche'
+V01 non viene eseguito in un ambiente con build/test/CI sui target dichiarati.
 
 
 La fixture testuale include anche un documento WinAnsi con carattere accentato, per proteggere
