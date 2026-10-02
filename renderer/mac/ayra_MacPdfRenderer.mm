@@ -421,8 +421,10 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
         return {};
 
     const auto mediaBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
+    const auto cropBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFCropBox));
+    const auto visibleBox = CGRectIntersection (mediaBox, cropBox);
 
-    if (CGRectIsNull (mediaBox) || CGRectIsEmpty (mediaBox) || CGRectIsInfinite (mediaBox))
+    if (CGRectIsNull (visibleBox) || CGRectIsEmpty (visibleBox) || CGRectIsInfinite (visibleBox))
         return {};
 
     const int rawRotation = CGPDFPageGetRotationAngle (page);
@@ -434,7 +436,7 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
     PdfPage result;
     result.index = pageIndex;
 
-    if (!copyPdfBounds (mediaBox, result.bounds))
+    if (!copyPdfBounds (visibleBox, result.bounds))
         return {};
 
     result.rotation = rotation;
@@ -543,13 +545,24 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
                                                static_cast<CGFloat> (width),
                                                static_cast<CGFloat> (height));
         const auto transform = CGPDFPageGetDrawingTransform (page,
-                                                             kCGPDFMediaBox,
+                                                             kCGPDFCropBox,
                                                              destination,
                                                              0,
                                                              true);
 
+        const auto mediaBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
+        const auto cropBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFCropBox));
+        const auto visibleBox = CGRectIntersection (mediaBox, cropBox);
+
+        if (CGRectIsNull (visibleBox) || CGRectIsEmpty (visibleBox) || CGRectIsInfinite (visibleBox))
+        {
+            CGContextRestoreGState (context);
+            CGContextRelease (context);
+            return {};
+        }
+
         CGContextConcatCTM (context, transform);
-        CGContextClipToRect (context, CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox)));
+        CGContextClipToRect (context, visibleBox);
         CGContextDrawPDFPage (context, page);
         CGContextRestoreGState (context);
         CGContextRelease (context);

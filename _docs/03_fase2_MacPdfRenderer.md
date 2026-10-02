@@ -122,7 +122,7 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
     CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, (size_t)(pageIndex + 1));
     if (page == nullptr) { return {}; }
 
-    CGRect mediaBox = CGPDFPageGetBoxRect (page, kCGPDFMediaBox);
+    CGRect mediaBox = CGPDFPageGetBoxRect (page, kCGPDFCropBox);
     int rotationCG  = CGPDFPageGetRotationAngle (page); // 0, 90, 180, 270
 
     PdfPage result;
@@ -151,11 +151,11 @@ Contratto:
   compatibile col layout native `juce::PixelARGB` su Apple;
 - backdrop bianco deterministico;
 - flip esplicito Quartz Y-up -> buffer JUCE top-down;
-- `CGPDFPageGetDrawingTransform` gestisce MediaBox e /Rotate;
+- `CGPDFPageGetDrawingTransform` gestisce visible box (MediaBox ∩ CropBox) e /Rotate;
 - `std::bad_alloc` viene tradotto in immagine invalida.
 
 La verifica visiva/runtime deve coprire una pagina asimmetrica con marker ai quattro angoli,
-color bars, MediaBox non-zero e rotazioni 0/90/180/270.
+color bars, visible box (MediaBox ∩ CropBox) non-zero e rotazioni 0/90/180/270.
 
 ---
 
@@ -229,6 +229,6 @@ documenti malformati; le allocazioni C++ vengono gestite senza violare le firme 
 - [x] `findText` — PDFKit page-bounded selections, bounds reali in page space
 - [x] Nessun `jassertfalse`/TODO residuo nel renderer Apple
 - [x] `close()` idempotente: documento -> provider -> backing memory
-- [ ] External: rendering asimmetrico + rotazioni 0/90/180/270 + MediaBox non-zero
+- [ ] External: rendering asimmetrico + rotazioni 0/90/180/270 + visible box (MediaBox ∩ CropBox) non-zero
 - [ ] External: byte equality/round-trip file e memory
 - [ ] External: Unicode/Type0/CMap + multiline search + bounds per pagina

@@ -224,7 +224,7 @@ void PdfiumRenderer::close() noexcept
 - [x] `saveToMemory` — snapshot byte-preserving transazionale
 - [x] `close` — `FPDF_CloseDocument` prima del reset backing data
 - [x] `getPageCount` — `FPDF_GetPageCount` serializzato
-- [x] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
+- [x] `getPage` — `FPDF_GetPageBoundingBox` (MediaBox intersect CropBox) + `FPDFPage_GetRotation`
 - [x] `renderPage` — bounded direct bitmap; Android reverse-byte-order flag
 - [x] `extractText` — bounded UTF-16LE -> JUCE, alias-safe
 - [x] `findText` — case-insensitive + CountRects/GetRect + exact match text

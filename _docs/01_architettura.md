@@ -24,7 +24,7 @@ Il facade non possiede parsing, raster, safety limits o search algorithms.
 
 ## Coordinate canoniche
 
-`PdfPage.bounds` e `PdfSearchResult.bounds` sono in PDF page/user space:
+`PdfPage.bounds` e' il visible page box canonico (MediaBox intersecato con CropBox). `PdfSearchResult.bounds` resta in PDF page/user space:
 - 1 punto = 1/72 pollice;
 - origine lower-left;
 - asse Y verso l'alto.

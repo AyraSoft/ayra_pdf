@@ -77,7 +77,7 @@ if (document.open (juce::File ("/path/manual.pdf")))
 }
 ```
 
-Le API engine usano indici pagina **0-based**. Le bounds di `PdfPage` e
+Le API engine usano indici pagina **0-based**. `PdfPage.bounds` rappresenta il visible box (MediaBox intersect CropBox). Le bounds di `PdfPage` e
 `PdfSearchResult` sono in PDF page space: 72 dpi, origine lower-left, Y-up.
 
 ## Quick start - widget

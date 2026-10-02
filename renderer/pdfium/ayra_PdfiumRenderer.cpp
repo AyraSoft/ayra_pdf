@@ -453,21 +453,21 @@ PdfPage PdfiumRenderer::getPage (int pageIndex) const noexcept
     if (page == nullptr)
         return {};
 
-    float left = 0.0f;
-    float bottom = 0.0f;
-    float right = 0.0f;
-    float top = 0.0f;
-
-    const bool hasMediaBox = FPDFPage_GetMediaBox (page, &left, &bottom, &right, &top) != 0;
+    FS_RECTF visibleBox {};
+    const bool hasVisibleBox = FPDF_GetPageBoundingBox (page, &visibleBox) != 0;
     const int rotationQuarterTurns = FPDFPage_GetRotation (page);
 
     FPDF_ClosePage (page);
 
-    if (!hasMediaBox || rotationQuarterTurns < 0 || rotationQuarterTurns > 3)
+    if (!hasVisibleBox || rotationQuarterTurns < 0 || rotationQuarterTurns > 3)
         return {};
 
-    const double width = static_cast<double> (right) - static_cast<double> (left);
-    const double height = static_cast<double> (top) - static_cast<double> (bottom);
+    const double left = static_cast<double> (visibleBox.left);
+    const double bottom = static_cast<double> (visibleBox.bottom);
+    const double right = static_cast<double> (visibleBox.right);
+    const double top = static_cast<double> (visibleBox.top);
+    const double width = right - left;
+    const double height = top - bottom;
 
     if (!fitsFloat (left) || !fitsFloat (bottom)
         || !fitsFloat (width) || !fitsFloat (height)
@@ -478,8 +478,8 @@ PdfPage PdfiumRenderer::getPage (int pageIndex) const noexcept
 
     PdfPage result;
     result.index = pageIndex;
-    result.bounds = { left,
-                      bottom,
+    result.bounds = { static_cast<float> (left),
+                      static_cast<float> (bottom),
                       static_cast<float> (width),
                       static_cast<float> (height) };
     result.rotation = rotationQuarterTurns * 90;

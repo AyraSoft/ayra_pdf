@@ -95,7 +95,7 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 ## Invarianti correnti
 
 1. PDF e payload esterni sono input non affidabili e bounded.
-2. Page/search bounds sono sempre PDF page space, 72 dpi, lower-left/Y-up.
+2. `PdfPage.bounds` = MediaBox intersect CropBox; page/search bounds usano PDF page space, 72 dpi, lower-left/Y-up.
 3. Il widget e' l'unico owner della conversione page-space -> widget-space.
 4. Save e' byte-preserving; nessun backend ridisegna un PDF non modificato per salvarlo.
 5. PDFium ha una sola chiamata FPDF alla volta nell'intero processo.
@@ -109,7 +109,7 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 ### macOS
 - build Debug/Release;
 - file/memory load;
-- MediaBox non-zero;
+- MediaBox non-zero + CropBox differente/intersecato;
 - /Rotate 0/90/180/270;
 - raster color bars + marker ai quattro angoli;
 - PDFKit Unicode/Type0/CMap/search multiline;
