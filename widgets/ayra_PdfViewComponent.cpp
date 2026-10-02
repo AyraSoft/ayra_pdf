@@ -371,9 +371,15 @@ void PdfViewComponent::setPageNumber (int pageNumber)
     if (pageNumber < 1 || pageNumber > currentPageCount || pageNumber == currentPage)
         return;
 
+    const auto pageInfo = currentDocument->getPage (pageNumber - 1);
+
+    if (!pageInfo.isValid())
+        return;
+
     currentPage = pageNumber;
     topLeft = {};
-    cachedPageInfo = {};
+    cachedPageInfo = pageInfo;
+    clampTopLeft();
 
     invalidatePageCache();
     invalidateSearchResults();

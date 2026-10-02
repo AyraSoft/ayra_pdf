@@ -22,6 +22,10 @@ Non possiede parsing, text engine o raster algorithm.
 
 `paint()` fa soltanto compositing.
 
+I metadata della pagina corrente vengono letti sincronicamente da `PdfDocument::getPage()`
+quando cambia pagina e restano disponibili indipendentemente dal completamento del raster.
+La cache asincrona riguarda soltanto l'immagine derivata.
+
 Render e search usano un pool condiviso del modulo. Per ciascun widget:
 - al massimo un job render schedulato;
 - al massimo un job search schedulato;

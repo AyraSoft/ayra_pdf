@@ -68,7 +68,7 @@ renderer concreti.
 - ownership asincrona tramite `std::shared_ptr<PdfDocument>`;
 - render/search off Message Thread; publication via cancellable `AsyncUpdater`;
 - richieste coalesced;
-- cache con generation token;
+- cache raster con generation token, separata dai metadata sincroni della pagina corrente;
 - navigazione UI 1-based;
 - zoom, pan, wheel, pinch;
 - HiDPI;
@@ -159,6 +159,8 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 
 Aggiunto `tests/ayra_PdfCoreTests.cpp`, incluso dal root solo con `JUCE_UNIT_TESTS`.
 Durante il preflight statico sono stati inoltre chiusi:
+- compatibilita' source-level `PDFComponent` protetta da compile guards e sentinel test;
+- metadata pagina corrente indipendenti dal completamento del raster asincrono;
 - ownership PDFKit compatibile ARC/non-ARC;
 - visible page box uniforme tra Apple/PDFium (MediaBox intersect CropBox);
 - geometry post-rotation centralizzata in `PdfPage::getDisplayBounds()`;

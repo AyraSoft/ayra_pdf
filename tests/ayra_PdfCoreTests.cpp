@@ -1,6 +1,17 @@
 namespace ayra::tests
 {
 
+#ifndef AYRA_PDF_HEADLESS
+using LegacyLoadDocumentSignature = void (PDFComponent::*) (juce::String);
+using LegacyExportDocumentSignature = void (PDFComponent::*) (juce::String, juce::String) const;
+
+static_assert (std::is_same_v<PDFComponent, PdfViewComponent>);
+static_assert (std::is_same_v<decltype (static_cast<LegacyLoadDocumentSignature> (&PDFComponent::loadDocument)),
+                              LegacyLoadDocumentSignature>);
+static_assert (std::is_same_v<decltype (static_cast<LegacyExportDocumentSignature> (&PDFComponent::exportCurrentDocument)),
+                              LegacyExportDocumentSignature>);
+#endif
+
 namespace
 {
 
@@ -154,6 +165,22 @@ public:
 
     void runTest() override
     {
+       #ifndef AYRA_PDF_HEADLESS
+        beginTest ("PDFComponent compatibility name preserves empty-state sentinels");
+
+        {
+            PDFComponent compatibilityView;
+            expect (! compatibilityView.thereIsADocumentLoaded());
+            expectEquals (compatibilityView.getTotPagesNum(), -1);
+            expectEquals (compatibilityView.getCurrentPageOnScreen(), -1);
+            expectWithinAbsoluteError (compatibilityView.getCurrentPageZoom(), -1.0f, 0.0f);
+            expectEquals (compatibilityView.getDocumentWidth(), 0.0f);
+            expectEquals (compatibilityView.getDocumentHeight(), 0.0f);
+            expect (compatibilityView.getCurrentPageBounds().isEmpty());
+            expect (compatibilityView.getCurrentPageTopLeftPosition() == juce::Point<float> {});
+        }
+       #endif
+
         beginTest ("PdfPage display geometry is canonical for all rotations");
 
         PdfPage page;
