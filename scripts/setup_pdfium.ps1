@@ -27,12 +27,23 @@ $Manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
 if ([string]::IsNullOrEmpty($Platform))
 {
     $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    switch ($arch)
+
+    if ($arch -eq [System.Runtime.InteropServices.Architecture]::X64)
     {
-        ([System.Runtime.InteropServices.Architecture]::X64)   { $Platform = 'x64' }
-        ([System.Runtime.InteropServices.Architecture]::X86)   { $Platform = 'x86' }
-        ([System.Runtime.InteropServices.Architecture]::Arm64) { $Platform = 'arm64' }
-        default { Write-Err "Architettura non supportata: $arch"; exit 1 }
+        $Platform = 'x64'
+    }
+    elseif ($arch -eq [System.Runtime.InteropServices.Architecture]::X86)
+    {
+        $Platform = 'x86'
+    }
+    elseif ($arch -eq [System.Runtime.InteropServices.Architecture]::Arm64)
+    {
+        $Platform = 'arm64'
+    }
+    else
+    {
+        Write-Err "Architettura non supportata: $arch"
+        exit 1
     }
 }
 
@@ -44,7 +55,7 @@ $Asset = $AssetProperty.Value
 $Tar = Get-Command tar.exe -ErrorAction SilentlyContinue
 if ($null -eq $Tar) { Write-Err 'tar.exe non trovato; richiesto per gli archivi .tgz'; exit 1 }
 
-$ArchiveName = Split-Path -Leaf ([string]$Asset.url)
+$ArchiveName = [System.IO.Path]::GetFileName(([Uri][string]$Asset.url).AbsolutePath)
 $ArchivePath = Join-Path $TempDir $ArchiveName
 $ExtractDir = Join-Path $TempDir "ext_$AssetKey"
 $OutDir = Join-Path (Join-Path $PdfiumDir 'win') $Platform
