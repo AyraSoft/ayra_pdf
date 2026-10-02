@@ -272,6 +272,12 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
             return {};
         }
 
+        const auto requiredBytes = static_cast<std::uint64_t> (bitmap.lineStride)
+                                 * static_cast<std::uint64_t> (height);
+
+        if (requiredBytes > static_cast<std::uint64_t> (bitmap.size))
+            return {};
+
         CGColorSpaceRef colourSpace = CGColorSpaceCreateDeviceRGB();
 
         if (colourSpace == nullptr)
@@ -317,7 +323,7 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
                                                              true);
 
         CGContextConcatCTM (context, transform);
-        CGContextClipToRect (context, CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
+        CGContextClipToRect (context, CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox)));
         CGContextDrawPDFPage (context, page);
         CGContextRestoreGState (context);
         CGContextRelease (context);
