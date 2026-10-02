@@ -127,7 +127,7 @@ install_one()
         }
         out_dir="$PDFIUM_DIR/android/$abi"
     fi
-    out_lib="$out_dir/libpdfium.so"
+    out_lib="$out_dir/$(basename "$runtime_path")"
     stamp_path="$out_dir/.pdfium-installed"
     expected_stamp="$VERSION|$key|$expected_hash"
 
