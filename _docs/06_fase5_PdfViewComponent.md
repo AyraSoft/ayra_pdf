@@ -125,3 +125,12 @@ This makes source-compatibility regression a compile-time failure instead of a c
 `PdfViewComponent::setSearchQuery()` enforces the same canonical UTF-8 query budget as the
 renderers before retaining/copying the query into worker state. Oversized queries fail closed,
 clear derived highlights, and never reach the worker/backend.
+
+
+## Raster budget vs visual zoom
+
+Visual zoom and raster resolution are intentionally separate. The page may remain at the requested
+0.1x..10x visual zoom while the worker raster scale is capped to the canonical dimension/pixel
+budgets. The cached image is then composited into the visual page bounds. This prevents valid high
+zoom/HiDPI states from turning blank merely because a full-resolution raster would exceed the safety
+budget.

@@ -71,7 +71,7 @@ renderer concreti.
 - cache raster con generation token, separata dai metadata sincroni della pagina corrente;
 - navigazione UI 1-based con reset zoom 1.0 sul cambio pagina;
 - zoom, pan, wheel, pinch;
-- HiDPI;
+- HiDPI con raster scale capped indipendentemente dallo zoom visuale ai budget canonici;
 - overlay search ruotato correttamente;
 - LookAndFeel e doppia API eventi, incluso document loaded/closed.
 

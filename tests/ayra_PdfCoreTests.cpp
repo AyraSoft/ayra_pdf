@@ -273,6 +273,29 @@ public:
             { 0.0f, 480.0f, 20.0f, 20.0f }));
         expect (page.getDisplayBounds ({ -100.0f, -100.0f, 10.0f, 10.0f }).isEmpty());
 
+        beginTest ("Raster scale is capped without changing visual zoom semantics");
+
+        {
+            PdfPage a4;
+            a4.index = 0;
+            a4.bounds = { 0.0f, 0.0f, 595.0f, 842.0f };
+            a4.rotation = 0;
+
+            const float desired = 20.0f;
+            const float safe = clampRasterScaleToSafetyBudget (a4, desired);
+            const auto displaySize = a4.getDisplaySize();
+
+            const auto rasterWidth = static_cast<std::uint64_t> (
+                std::ceil (static_cast<double> (displaySize.x) * safe));
+            const auto rasterHeight = static_cast<std::uint64_t> (
+                std::ceil (static_cast<double> (displaySize.y) * safe));
+
+            expect (safe > 0.0f && safe < desired);
+            expect (rasterWidth <= static_cast<std::uint64_t> (detail::maxRasterDimension));
+            expect (rasterHeight <= static_cast<std::uint64_t> (detail::maxRasterDimension));
+            expect (rasterWidth * rasterHeight <= detail::maxRasterPixels);
+        }
+
         beginTest ("Generated fixture opens with visible box and rotations");
 
         const auto fixture = makePdfFixture();

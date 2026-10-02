@@ -28,6 +28,52 @@ constexpr float minVisibleFraction = 0.1f;
     return std::isfinite (point.x) && std::isfinite (point.y);
 }
 
+[[nodiscard]] float clampRasterScaleToSafetyBudget (const PdfPage& page,
+                                                     float desiredScale) noexcept
+{
+    if (!page.isValid()
+        || !std::isfinite (desiredScale)
+        || desiredScale <= 0.0f)
+    {
+        return 1.0f;
+    }
+
+    const auto displaySize = page.getDisplaySize();
+    const double width = static_cast<double> (displaySize.x);
+    const double height = static_cast<double> (displaySize.y);
+
+    if (!std::isfinite (width) || !std::isfinite (height)
+        || width <= 0.0 || height <= 0.0)
+    {
+        return 1.0f;
+    }
+
+    const double desired = static_cast<double> (desiredScale);
+    const double maxDimension = static_cast<double> (detail::maxRasterDimension);
+    const double maxPixels = static_cast<double> (detail::maxRasterPixels);
+    const double pageArea = width * height;
+
+    if (!std::isfinite (pageArea) || pageArea <= 0.0)
+        return 1.0f;
+
+    const double maxByWidth = maxDimension / width;
+    const double maxByHeight = maxDimension / height;
+    const double maxByPixels = std::sqrt (maxPixels / pageArea);
+    double safe = std::min ({ desired, maxByWidth, maxByHeight, maxByPixels });
+
+    if (!std::isfinite (safe) || safe <= 0.0)
+        return 1.0f;
+
+    // Renderer dimensions use ceil(). Keep a small margin whenever the
+    // request is budget-limited so rounding cannot cross a hard cap.
+    if (safe < desired)
+        safe *= 0.99;
+
+    return static_cast<float> (std::max (
+        safe,
+        static_cast<double> (std::numeric_limits<float>::min())));
+}
+
 [[nodiscard]] juce::ThreadPool& getPdfRenderPool()
 {
     static juce::ThreadPool pool { 1 };
@@ -762,7 +808,9 @@ void PdfViewComponent::requestPageRender()
         state->renderDocument = currentDocument;
         state->renderRequestGeneration = state->renderGeneration.load (std::memory_order_acquire);
         state->renderPageIndex = currentPage - 1;
-        state->renderScale = currentZoom * rasterDeviceScale;
+        state->renderScale = clampRasterScaleToSafetyBudget (
+            currentPageInfo,
+            currentZoom * rasterDeviceScale);
         state->renderRequestPending = true;
 
         if (!state->renderJobScheduled)
