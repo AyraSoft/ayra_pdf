@@ -161,5 +161,5 @@ load transazionale e input invalidi. Non e' stato eseguito in questa sessione.
 ## Completion gate
 
 Il codice e' **implementation-complete staticamente** e V01 ha ora uno smoke test
-cross-backend riproducibile. La release non va dichiarata production-verified finche'
+cross-backend riproducibile. Le specifiche backend 03/04 sono state riallineate al codice corrente. La release non va dichiarata production-verified finche'
 V01 non viene eseguito in un ambiente con build/test/CI.
