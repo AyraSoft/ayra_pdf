@@ -1,4 +1,4 @@
-# Fase 2 — MacPdfRenderer (CoreGraphics)
+# Fase 2 — MacPdfRenderer (CoreGraphics + PDFKit)
 
 **Autore**: Ayra Soft  
 **Data creazione**: 2026-05-26  
@@ -8,27 +8,28 @@
 
 ## Obiettivo
 
-Implementare completamente `renderer/mac/ayra_MacPdfRenderer.mm` migrando la logica
-CoreGraphics da `pdf_component/Mac_PDF_core/MacPDFComponent.mm`.
+Implementare il backend Apple current-only. Il legacy viene usato solo come riferimento storico:
+CoreGraphics possiede lifecycle/raster, PDFKit possiede text extraction/search.
 
 Deliverable della Fase 2:
 - `loadFromFile` — caricamento da path
 - `loadFromMemory` — caricamento da buffer
-- `saveToFile` — export su file (migrazione da `exportCurrentDocument`)
-- `saveToMemory` — serializzazione in memoria (con fix del bug `dummyURL`)
+- `saveToFile` — copia byte-preserving e transazionale dei dati sorgente
+- `saveToMemory` — copia byte-preserving e transazionale dei dati sorgente
 - `getPageCount` — conteggio pagine strutturale
 - `getPage` — bounds in PDF user space + rotazione; la conversione viewport appartiene al widget
 - `renderPage` — rasterizzazione in `juce::Image` via `CGBitmapContext`
-- `extractText` — estrazione testo tramite `CGPDFScanner`
-- `findText` — ricerca testuale con bounding box
+- `extractText` — estrazione Unicode via PDFKit `PDFPage.string`
+- `findText` — ricerca case-insensitive via PDFKit `PDFSelection`, bounds esatti in page space
 
 ---
 
 ## Prerequisiti
 
 - Solo macOS e iOS — tutto il file e' sotto `#if JUCE_MAC || JUCE_IOS`
-- Nessuna dipendenza esterna — CoreGraphics e' un framework Apple standard
-- Framework inclusi automaticamente da JUCE: CoreGraphics.framework, Cocoa.framework (gia' presenti in ayra_pdf.cpp)
+- Nessuna dipendenza third-party: CoreGraphics e PDFKit sono framework Apple di sistema
+- Target documentati: macOS 11+ / iOS 14+; PDFKit e' disponibile su entrambi
+- Il modulo deve dichiarare esplicitamente i framework Apple che usa
 
 ---
 
@@ -83,91 +84,18 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
 ---
 
-## Implementazione saveToFile()
+## Save file / memory — implementazione corrente byte-preserving
 
-Migrazione da `MacPDFViewComponent::exportCurrentDocument()` in `MacPDFComponent.mm:207-234`.
+Il renderer v2 e' read-only: salvare significa preservare esattamente il documento caricato,
+non ridisegnare le pagine in un nuovo PDF. La ricostruzione via `CGPDFContext` e' stata scartata
+perche' puo' perdere metadata, outline, annotation, form state e altre strutture non grafiche.
 
-```objc
-bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
-{
-    if (impl->document == nullptr) { return false; }
+M03 usa `CGDataProviderCopyData` per ottenere uno snapshot bounded dei byte sorgente.
 
-    NSString* outputPath = [NSString stringWithUTF8String: destFile.getFullPathName().toRawUTF8()];
-    NSURL* outputURL     = [NSURL fileURLWithPath: outputPath];
-
-    CGContextRef ctx = CGPDFContextCreateWithURL ((__bridge CFURLRef) outputURL, nullptr, nullptr);
-    if (ctx == nullptr) { return false; }
-
-    size_t numPages = CGPDFDocumentGetNumberOfPages (impl->document);
-    for (size_t p = 1; p <= numPages; ++p)
-    {
-        CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, p);
-        CGRect mediaBox   = CGPDFPageGetBoxRect (page, kCGPDFMediaBox);
-        CGContextBeginPage (ctx, &mediaBox);
-        CGContextDrawPDFPage (ctx, page);
-        CGContextEndPage (ctx);
-    }
-
-    CGPDFContextClose (ctx);
-    CGContextRelease (ctx);
-    return true;
-}
-```
-
----
-
-## Implementazione saveToMemory() — Fix del bug dummyURL
-
-Il bug in `MacPDFComponent.mm:255-282` usava `CGPDFContextCreateWithURL(@"dummyURL")`
-che produce un contesto invalido e non scrive niente. Il pattern corretto richiede
-`CGDataConsumerCreate` con callback verso `NSMutableData`.
-
-```objc
-bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
-{
-    if (impl->document == nullptr) { return false; }
-
-    destData.reset();
-
-    // Buffer di accumulo ObjC
-    NSMutableData* buffer = [NSMutableData data];
-
-    // Callback per scrivere blocchi nel buffer
-    auto putBytesCallback = [] (void* info, const void* buf, size_t count) -> size_t
-    {
-        NSMutableData* d = (__bridge NSMutableData*) info;
-        [d appendBytes: buf length: count];
-        return count;
-    };
-
-    CGDataConsumerCallbacks callbacks;
-    callbacks.putBytes       = putBytesCallback;
-    callbacks.releaseConsumer = nullptr;
-
-    CGDataConsumerRef consumer = CGDataConsumerCreate ((__bridge void*) buffer, &callbacks);
-    CGContextRef ctx = CGPDFContextCreate (consumer, nullptr, nullptr);
-    CGDataConsumerRelease (consumer);
-
-    if (ctx == nullptr) { return false; }
-
-    size_t numPages = CGPDFDocumentGetNumberOfPages (impl->document);
-    for (size_t p = 1; p <= numPages; ++p)
-    {
-        CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, p);
-        CGRect mediaBox   = CGPDFPageGetBoxRect (page, kCGPDFMediaBox);
-        CGContextBeginPage (ctx, &mediaBox);
-        CGContextDrawPDFPage (ctx, page);
-        CGContextEndPage (ctx);
-    }
-
-    CGPDFContextClose (ctx);
-    CGContextRelease (ctx);
-
-    // Trasferimento in MemoryBlock JUCE
-    destData.replaceAll (buffer.bytes, (size_t) buffer.length);
-    return destData.getSize() > 0;
-}
-```
+- `saveToFile`: `juce::File::replaceWithData`, quindi sostituzione tramite temporary file.
+- `saveToMemory`: costruisce un nuovo `MemoryBlock` e lo pubblica solo dopo copia riuscita.
+- failure: la destinazione precedente resta intatta.
+- limite: `detail::maxDocumentBytes`, owner canonico in `renderer/ayra_PdfSafetyLimits.h`.
 
 ---
 
@@ -210,67 +138,24 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
 ---
 
-## Implementazione renderPage() -> juce::Image
+## renderPage() — implementazione corrente
 
-`CGBitmapContext` permette di rasterizzare direttamente sul buffer pixel di `juce::Image`.
+M02 rasterizza direttamente in un `juce::SoftwareImageType` ARGB.
 
-Nota: `kCGBitmapByteOrder32Host | kCGImageAlphaPremultipliedFirst` produce il formato
-`ARGB` su little-endian (Intel e ARM Apple Silicon), compatibile con `juce::Image::ARGB`.
+Contratto:
+- `scale` deve essere finita e > 0;
+- dimensioni ruotate correttamente per 90/270 gradi;
+- max 16384 px per lato e 64 Mi pixel totali (policy canonica condivisa);
+- verifica `BitmapData`: ARGB, pixel stride, line stride e `bitmap.size`;
+- CoreGraphics usa `kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host`,
+  compatibile col layout native `juce::PixelARGB` su Apple;
+- backdrop bianco deterministico;
+- flip esplicito Quartz Y-up -> buffer JUCE top-down;
+- `CGPDFPageGetDrawingTransform` gestisce MediaBox e /Rotate;
+- `std::bad_alloc` viene tradotto in immagine invalida.
 
-`CGPDFPageGetDrawingTransform` calcola automaticamente la trasformazione che mappa
-il PDF user space nel bounds del contesto (gestisce rotazione, scaling, flip Y).
-
-```objc
-juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
-{
-    if (impl->document == nullptr) { return {}; }
-
-    CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, (size_t)(pageIndex + 1));
-    if (page == nullptr) { return {}; }
-
-    CGRect mediaBox = CGPDFPageGetBoxRect (page, kCGPDFMediaBox);
-    const int w = (int)(mediaBox.size.width  * scale);
-    const int h = (int)(mediaBox.size.height * scale);
-
-    if (w <= 0 || h <= 0) { return {}; }
-
-    juce::Image img (juce::Image::ARGB, w, h, true);
-    {
-        juce::Image::BitmapData bmp (img, juce::Image::BitmapData::writeOnly);
-
-        CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-        CGContextRef bmpCtx = CGBitmapContextCreate (
-            bmp.data,
-            (size_t) w, (size_t) h,
-            8,                                      // bit per componente
-            (size_t) bmp.lineStride,
-            cs,
-            (CGBitmapInfo)(kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
-
-        if (bmpCtx != nullptr)
-        {
-            // Sfondo bianco (i PDF assumono sfondo bianco per default)
-            CGContextSetRGBFillColor (bmpCtx, 1.0, 1.0, 1.0, 1.0);
-            CGContextFillRect (bmpCtx, CGRectMake (0, 0, w, h));
-
-            // CGPDFPageGetDrawingTransform calcola scale + flip Y
-            // (CoreGraphics ha Y-up, CGBitmapContext ha Y-down se la CTM non viene flippata)
-            CGRect destRect = CGRectMake (0, 0, w, h);
-            CGAffineTransform t = CGPDFPageGetDrawingTransform (
-                page, kCGPDFMediaBox, destRect, 0, true);
-
-            CGContextConcatCTM (bmpCtx, t);
-            CGContextDrawPDFPage (bmpCtx, page);
-
-            CGContextRelease (bmpCtx);
-        }
-
-        CGColorSpaceRelease (cs);
-    }
-
-    return img;
-}
-```
+La verifica visiva/runtime deve coprire una pagina asimmetrica con marker ai quattro angoli,
+color bars, MediaBox non-zero e rotazioni 0/90/180/270.
 
 ---
 
@@ -307,145 +192,27 @@ Il renderer non gestisce il viewport (zoom/pan) — quello e' compito di `PdfVie
 
 ---
 
-## extractText() via CGPDFScanner
+## M04 — text extraction e search via PDFKit
 
-CoreGraphics non ha un'API di alto livello per estrarre testo. Si deve implementare tramite
-`CGPDFScanner` registrando gli operatori PDF di posizionamento testo (`Tj`, `TJ`, `'`, `"`).
+Il precedente design basato su `CGPDFScanner` manuale e' **ritirato**. CoreGraphics espone
+gli operatori del content stream ma non un text engine completo; implementare correttamente
+font Type0, ToUnicode CMap, XObject annidati, writing mode e geometria dei glifi creerebbe un
+secondo parser PDF proprietario.
 
-```objc
-juce::String MacPdfRenderer::extractText (int pageIndex) noexcept
-{
-    if (impl->document == nullptr) { return {}; }
+Il backend Apple usa quindi PDFKit, sempre da framework di sistema:
 
-    CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, (size_t)(pageIndex + 1));
-    if (page == nullptr) { return {}; }
+- il modello `PDFDocument` viene creato lazy dai medesimi byte del `CGDataProvider`;
+- e' una cache derivata, mai una seconda source of truth;
+- `PDFPage.string` implementa `extractText`;
+- `PDFDocument findString:withOptions:` implementa ricerca **case-insensitive**;
+- ogni `PDFSelection` produce uno o piu' `PdfSearchResult`, uno per pagina coinvolta;
+- `boundsForPage:` e' gia' in page space 72 dpi, lower-left/Y-up: nessuna conversione qui;
+- bounds null/non-finite/empty vengono scartate;
+- pagina specifica: filtro 0-based validato prima di chiamare PDFKit;
+- la cache PDFKit viene rilasciata in `close()` prima del provider/backing bytes.
 
-    // Struttura per accumulare il testo estratto
-    struct ScanContext
-    {
-        NSMutableString* text = [[NSMutableString alloc] init];
-    };
-    ScanContext scanCtx;
-
-    // Helper: decodifica una stringa PDF (puo' essere Latin-1, UTF-16BE o encoding custom)
-    auto appendPdfString = [] (CGPDFStringRef pdfStr, NSMutableString* out)
-    {
-        NSString* decoded = (NSString*) CGPDFStringCopyTextString (pdfStr);
-        if (decoded) { [out appendString: decoded]; [decoded release]; }
-    };
-
-    CGPDFOperatorTableRef table = CGPDFOperatorTableCreate();
-
-    // Operatore Tj: (string) Tj — mostra una stringa
-    CGPDFOperatorTableSetCallback (table, "Tj", [](CGPDFScannerRef scanner, void* info) {
-        CGPDFStringRef str = nullptr;
-        if (CGPDFScannerPopString (scanner, &str))
-        {
-            ScanContext* ctx = static_cast<ScanContext*>(info);
-            NSString* decoded = (NSString*) CGPDFStringCopyTextString (str);
-            if (decoded) { [ctx->text appendString: decoded]; [decoded release]; }
-            [ctx->text appendString: @" "]; // separatore tra token
-        }
-    });
-
-    // Operatore TJ: [(string | adjust)...] TJ — mostra array di stringhe con kerning
-    CGPDFOperatorTableSetCallback (table, "TJ", [](CGPDFScannerRef scanner, void* info) {
-        CGPDFArrayRef arr = nullptr;
-        if (CGPDFScannerPopArray (scanner, &arr))
-        {
-            ScanContext* ctx = static_cast<ScanContext*>(info);
-            size_t count = CGPDFArrayGetCount (arr);
-            for (size_t i = 0; i < count; ++i)
-            {
-                CGPDFStringRef str = nullptr;
-                if (CGPDFArrayGetString (arr, i, &str))
-                {
-                    NSString* decoded = (NSString*) CGPDFStringCopyTextString (str);
-                    if (decoded) { [ctx->text appendString: decoded]; [decoded release]; }
-                }
-                // Gli elementi numerici (kerning) vengono ignorati
-            }
-            [ctx->text appendString: @" "];
-        }
-    });
-
-    // Operatori ' e " (mostra stringa con avanzamento riga) — stessa logica di Tj
-    CGPDFOperatorTableSetCallback (table, "'", [](CGPDFScannerRef scanner, void* info) {
-        CGPDFStringRef str = nullptr;
-        if (CGPDFScannerPopString (scanner, &str))
-        {
-            ScanContext* ctx = static_cast<ScanContext*>(info);
-            NSString* decoded = (NSString*) CGPDFStringCopyTextString (str);
-            if (decoded) { [ctx->text appendString: decoded]; [decoded release]; }
-            [ctx->text appendString: @"\n"];
-        }
-    });
-
-    CGPDFContentStreamRef stream = CGPDFContentStreamCreateWithPage (page);
-    CGPDFScannerRef pdfScanner   = CGPDFScannerCreate (stream, table, &scanCtx);
-    CGPDFScannerScan (pdfScanner);
-    CGPDFScannerRelease (pdfScanner);
-    CGPDFContentStreamRelease (stream);
-    CGPDFOperatorTableRelease (table);
-
-    juce::String result = juce::String::fromUTF8 (scanCtx.text.UTF8String);
-    [scanCtx.text release];
-    return result;
-}
-```
-
-**Limitazione nota**: `CGPDFStringCopyTextString` gestisce Latin-1, MacRoman e UTF-16BE.
-Documenti con encoding custom (Type1 con ToUnicode CMap personalizzata) possono produrre
-caratteri sbagliati o interrogativi. PDFium gestisce questo caso meglio.
-
----
-
-## findText() — ricerca testuale
-
-CoreGraphics non ha API native per la ricerca testuale. L'approccio corretto e' estrarre
-il testo per pagina, cercare la stringa, e poi calcolare le bounding box tramite `CGPDFScanner`
-tenendo traccia delle posizioni degli operatori di testo.
-
-Una implementazione semplificata che funziona per la maggior parte dei documenti:
-
-```objc
-juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query, int pageIndex) noexcept
-{
-    juce::Array<PdfSearchResult> results;
-    if (impl->document == nullptr || query.isEmpty()) { return results; }
-
-    int startPage = (pageIndex >= 0) ? pageIndex : 0;
-    int endPage   = (pageIndex >= 0) ? pageIndex : getPageCount() - 1;
-
-    for (int p = startPage; p <= endPage; ++p)
-    {
-        // Estrai il testo e cerca la query
-        juce::String pageText = extractText (p);
-        if (!pageText.containsIgnoreCase (query)) { continue; }
-
-        // Match trovato: aggiungi un risultato con bounds approssimati (0 = non calcolato)
-        // Per bounds precisi servirebbe un secondo scanner che traccia la posizione di ogni glifo.
-        // L'implementazione completa e' costosa: richiede il tracking della text matrix (Tm, Td, TD, T*)
-        // per ogni operatore e il mapping glifo -> bounds tramite CGPDFFont.
-        PdfSearchResult result;
-        result.pageIndex = p;
-        result.text      = query;
-        result.bounds    = {}; // DESIGN NOTE STORICA: NON accettabile come implementazione finale
-        results.add (result);
-    }
-
-    return results;
-}
-```
-
-**Gate corrente (Master / Completion Integrity):** un risultato con bounds vuoti o approssimati
-non puo' essere dichiarato completo. M04 deve produrre bounds semanticamente validi oppure
-modificare esplicitamente il contratto nell'owner canonico prima dell'implementazione.
-
-**Nota tecnica**: per bounds precisi su macOS sarebbe necessario implementare un CGPDFScanner completo
-che traccia la text matrix corrente (operatori `Td`, `TD`, `Tm`, `T*`, `BT`, `ET`) e la
-converte in coordinate viewport. Su PDFium questo e' fornito dall'API `FPDFText_GetCharBox`.
-Se i bounds precisi di ricerca sono prioritari, valutare l'uso di PDFium anche su macOS.
+Le chiamate PDFKit vengono protette al boundary contro eccezioni Objective-C originate da
+documenti malformati; le allocazioni C++ vengono gestite senza violare le firme `noexcept`.
 
 ---
 
@@ -453,14 +220,15 @@ Se i bounds precisi di ricerca sono prioritari, valutare l'uso di PDFium anche s
 
 - [x] `loadFromFile` — implementazione current-only con provider owned e commit transazionale
 - [x] `loadFromMemory` — backing buffer owned dal renderer per tutta la vita del provider
-- [ ] `saveToFile` — migrazione da `MacPDFComponent.mm:207-234`
-- [ ] `saveToMemory` — **nuovo** con fix `CGDataConsumerCreate` (vedi sezione sopra)
+- [x] `saveToFile` — snapshot byte-preserving + replace transazionale
+- [x] `saveToMemory` — snapshot byte-preserving + publish transazionale
 - [x] `getPageCount` — `CGPDFDocumentGetNumberOfPages` con clamp al dominio `int`
 - [x] `getPage` — range check 0-based, bounds finite in PDF user space, rotazione normalizzata
-- [ ] `renderPage` — `CGBitmapContext` + `CGPDFPageGetDrawingTransform`
+- [x] `renderPage` — bounded SoftwareImage + CGBitmapContext + rotation/orientation contract
 - [ ] `extractText` — `CGPDFScanner` con operatori Tj/TJ/'/"
-- [ ] `findText` — ricerca su testo estratto (bounds approssimati o completi)
+- [ ] `findText` — PDFKit selections, bounds reali in page space (M04)
 - [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
 - [x] `close()` idempotente: documento -> provider -> backing memory
-- [ ] Test manuale: aprire un PDF standard, navigare pagine, verificare rendering
-- [ ] Test `saveToMemory` -> `loadFromMemory`: round-trip corretto
+- [ ] External: rendering asimmetrico + rotazioni 0/90/180/270 + MediaBox non-zero
+- [ ] External: byte equality/round-trip file e memory
+- [ ] External: Unicode/Type0/CMap + multiline search + bounds per pagina

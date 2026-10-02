@@ -20,15 +20,14 @@
 namespace ayra
 {
 
-/** Implementazione CoreGraphics di PdfRenderer per macOS e iOS.
+/** Implementazione Apple di PdfRenderer per macOS e iOS.
  *
- *  Usa CGPDFDocument nativo — zero dipendenze esterne, nessuna libreria
- *  di terze parti richiesta. Rendering ad alta qualita' con antialiasing
- *  CoreGraphics e supporto nativo per font embedding, trasparenza, ecc.
+ *  Usa CoreGraphics per lifecycle/raster e PDFKit per text extraction/search.
+ *  Sono framework Apple di sistema: nessuna dipendenza third-party.
  *
  *  Migrazione current-only dal legacy MacPDFComponent.mm.
- *  M01 (lifecycle/load/metadata) e' implementato; rendering, save e testo/ricerca
- *  vengono completati nei microstep M02-M04 definiti in _docs/02_stato_attuale.md.
+ *  M01-M03 (lifecycle/load/metadata, rendering, save) sono implementati staticamente;
+ *  M04 completa testo/ricerca via PDFKit.
  *
  *  Usa il pattern Pimpl per isolare i tipi ObjC/CoreGraphics dagli
  *  header C++ — necessario per evitare contaminazione degli altri moduli.

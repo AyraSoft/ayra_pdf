@@ -21,7 +21,7 @@ namespace ayra
 /** Interfaccia pura per il rendering di documenti PDF.
  *
  *  Due implementazioni concrete:
- *  - MacPdfRenderer  : CoreGraphics nativo (macOS/iOS, zero dipendenze esterne)
+ *  - MacPdfRenderer  : CoreGraphics + PDFKit di sistema (macOS/iOS)
  *  - PdfiumRenderer  : PDFium Apache 2.0  (Windows, Linux, Android)
  *
  *  PdfDocument possiede un'istanza concreta e la espone tramite getRenderer()
@@ -91,10 +91,10 @@ public:
     //==============================================================================
     // RICERCA E ESTRAZIONE TESTO
 
-    /** Cerca un testo nel documento o in una singola pagina.
-     *  @param query      Testo da cercare.
+    /** Cerca un testo nel documento o in una singola pagina, case-insensitive.
+     *  @param query      Testo Unicode da cercare.
      *  @param pageIndex  Pagina target (0-based), oppure -1 per cercare in tutto il documento.
-     *  @return Array di PdfSearchResult con le occorrenze trovate.
+     *  @return Match con bounds in PDF page space (72 dpi, lower-left/Y-up).
      */
     [[nodiscard]] virtual juce::Array<PdfSearchResult> findText (const juce::String& query, int pageIndex) noexcept = 0;
 

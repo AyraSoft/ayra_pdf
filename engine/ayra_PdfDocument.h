@@ -24,7 +24,7 @@ class PdfRenderer;
  *
  *  Facade cross-platform: istanzia automaticamente il renderer corretto
  *  per la piattaforma corrente:
- *  - macOS / iOS  -> MacPdfRenderer (CoreGraphics, zero dipendenze esterne)
+ *  - macOS / iOS  -> MacPdfRenderer (CoreGraphics + PDFKit di sistema)
  *  - Windows      -> PdfiumRenderer (PDFium Apache 2.0)
  *  - Linux        -> PdfiumRenderer (PDFium Apache 2.0)
  *  - Android      -> PdfiumRenderer (PDFium Apache 2.0)
@@ -122,9 +122,9 @@ public:
 
     /** Cerca un testo nel documento.
      *
-     *  @param query      Stringa da cercare (case-sensitive dipende dall'implementazione).
+     *  @param query      Stringa Unicode da cercare, case-insensitive.
      *  @param pageIndex  Pagina in cui cercare (0-based), oppure -1 per cercare in tutto il doc.
-     *  @return Array di PdfSearchResult con le posizioni dei match trovati.
+     *  @return Match con bounds in PDF page space (72 dpi, lower-left/Y-up).
      */
     [[nodiscard]] juce::Array<PdfSearchResult> findText (const juce::String& query, int pageIndex = -1) noexcept;
 

@@ -38,9 +38,9 @@ dell'avvio dell'implementazione del 2026-10-02.
 |---|---|---|---|---|
 | **S00** | Governance/docs | Stato canonico, roadmap, current-only, limiti verifica | - | **done (static)** |
 | **M01** | Mac renderer | Lifecycle, load file/memory, close, page count/metadata | S00 | **done (static)** |
-| **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | **in progress** |
-| **M03** | Mac renderer | Save file + save memory, round-trip semantics senza `dummyURL` | M01 | pending |
-| **M04** | Mac renderer | Estrazione testo + ricerca con geometria contrattualmente corretta | M01 | pending |
+| **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | **done (static)** |
+| **M03** | Mac renderer | Save file + save memory byte-preserving | M01 | **done (static)** |
+| **M04** | Mac renderer | Estrazione testo + ricerca PDFKit con bounds esatti | M01 | **in progress** |
 | **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | pending |
 | **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | pending |
 | **P02** | PDFium | Render + save file/memory | P01 | pending |
@@ -104,6 +104,68 @@ bug e ownership legacy non vengono copiati automaticamente.
 conteggio e metadati pagina con range/narrowing checks. Nessuna build/CI eseguita qui.
 
 ---
+
+## Esito M02 / M03
+
+**M02 (2026-10-02)**: raster CoreGraphics diretto su `juce::SoftwareImageType`,
+ARGB premultiplied compatibile col layout JUCE Apple, backdrop bianco, output top-down,
+rotazioni PDF 0/90/180/270 gestite dal transform CoreGraphics. Input `scale`, dimensioni,
+pixel count, stride e buffer size sono bounded/validati. Limiti canonici condivisi con il
+futuro backend PDFium in `renderer/ayra_PdfSafetyLimits.h`.
+
+**M03 (2026-10-02)**: `saveToFile` e `saveToMemory` sono byte-preserving tramite snapshot
+del `CGDataProvider`; non ridisegnano le pagine e quindi non appiattiscono metadata,
+annotations, form fields o struttura. Le destinazioni hanno semantica transazionale.
+Build e round-trip runtime restano **external pending**.
+
+## Change Contract — M04 text extraction / search Apple
+
+**Task model**: fornire estrazione testo Unicode e ricerca con bounds reali senza implementare
+un parser PDF/font/CMap proprietario.
+
+**Canonical owner**:
+- `MacPdfRenderer`: orchestration del backend Apple;
+- CoreGraphics: lifecycle/raster;
+- PDFKit: content model testuale e selezioni;
+- `PdfSearchResult`: contratto geometrico cross-backend.
+
+**Existing reusable path**: PDFKit `PDFDocument/PDFPage/PDFSelection`. Il vecchio design
+`CGPDFScanner` manuale e' scartato perche' non copre in modo robusto Type0/CMap/XObject e
+non garantisce bounds corretti.
+
+**Expected files**:
+- `ayra_pdf.h` — dichiarazione framework PDFKit per macOS/iOS;
+- `renderer/mac/ayra_MacPdfRenderer.mm` — cache PDFKit derivata dai byte canonici;
+- `engine/ayra_PdfSearchResult.h`, `PdfPage.h`, `PdfRenderer.h`, `PdfDocument.h` — contratto;
+- documentazione corrente.
+
+**Forbidden ownership changes**:
+- nessun testo/search nel widget;
+- nessun secondo buffer PDF editabile/autoritativo;
+- nessun parser CMap/font custom;
+- nessuna conversione in screen space nel renderer.
+
+**Invariants**:
+- il modello PDFKit e' una cache derivata dagli stessi byte del provider CoreGraphics;
+- invalidazione deterministica in `close()`/nuovo load;
+- `findText` e' case-insensitive su tutti i backend;
+- bounds sempre 72 dpi, lower-left/Y-up; il widget converte una sola volta;
+- `pageIndex` -1 = documento intero, altrimenti 0-based e validato prima di chiamare PDFKit;
+- risultati senza bounds finite/non-empty non vengono pubblicati;
+- parser/search non sono realtime-safe e l'istanza resta externally serialized;
+- eccezioni native da PDF esterni malformati vengono tradotte in failure/risultato vuoto al boundary.
+
+**Acceptance criteria M04**:
+- `extractText` usa `PDFPage.string` e preserva Unicode;
+- `findText` usa `PDFDocument findString:withOptions:` e `PDFSelection boundsForPage:`;
+- nessun `jassertfalse` resta nei metodi Mac;
+- nessun bounds placeholder;
+- static diff audit completato;
+- test runtime su UTF-8/UTF-16, Type0/CMap, multiline match, pagina filtrata e PDF malformato:
+  **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
@@ -114,7 +176,7 @@ conteggio e metadati pagina con range/narrowing checks. Nessuna build/CI eseguit
 | `engine/ayra_PdfDocument.cpp` | ❌ stub (tutti jassertfalse) | tutte | 4 |
 | `renderer/ayra_PdfRenderer.h` | ✅ interfaccia completa | tutte | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
-| `renderer/mac/ayra_MacPdfRenderer.mm` | 🟠 M01 completo; M02-M04 ancora pending | macOS/iOS | 2 |
+| `renderer/mac/ayra_MacPdfRenderer.mm` | 🟠 M01-M03 completi staticamente; M04 in progress | macOS/iOS | 2 |
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
 | `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ❌ stub (jassertfalse), solo close() parziale | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
