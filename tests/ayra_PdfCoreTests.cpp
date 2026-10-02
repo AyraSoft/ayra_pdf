@@ -788,6 +788,32 @@ public:
         expect (document.saveToMemoryBlock (afterTruncatedFailure));
         expect (afterTruncatedFailure == fixture);
 
+        beginTest ("Invalid file replacement is transactional");
+
+        {
+            auto invalidFile = juce::File::getSpecialLocation (
+                                   juce::File::tempDirectory)
+                                   .getNonexistentChildFile (
+                                       "ayra_pdf_invalid_replacement",
+                                       ".pdf",
+                                       false);
+
+            static constexpr char invalidFileBytes[] = "%PDF-1.4\ntruncated";
+            expect (invalidFile.replaceWithData (
+                invalidFileBytes,
+                sizeof (invalidFileBytes) - 1));
+
+            expect (! document.open (invalidFile));
+            expect (document.isOpen());
+            expectEquals (document.getPageCount(), 4);
+
+            juce::MemoryBlock afterInvalidFile;
+            expect (document.saveToMemoryBlock (afterInvalidFile));
+            expect (afterInvalidFile == fixture);
+
+            (void) invalidFile.deleteFile();
+        }
+
         beginTest ("Resource budgets fail before touching oversized payload memory");
 
         expectEquals (
