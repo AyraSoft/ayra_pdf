@@ -204,8 +204,8 @@ Il backend Apple usa quindi PDFKit, sempre da framework di sistema:
 - il modello `PDFDocument` viene creato lazy dai medesimi byte del `CGDataProvider`;
 - e' una cache derivata, mai una seconda source of truth;
 - `PDFPage.string` implementa `extractText`;
-- `PDFDocument findString:withOptions:` implementa ricerca **case-insensitive**;
-- ogni `PDFSelection` produce uno o piu' `PdfSearchResult`, uno per pagina coinvolta;
+- `NSString rangeOfString:options:range:` implementa ricerca **case-insensitive** pagina per pagina;
+- `PDFPage selectionForRange:` produce la selezione geometrica esatta del match;
 - `boundsForPage:` e' gia' in page space 72 dpi, lower-left/Y-up: nessuna conversione qui;
 - bounds null/non-finite/empty vengono scartate;
 - pagina specifica: filtro 0-based validato prima di chiamare PDFKit;
