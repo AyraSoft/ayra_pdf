@@ -16,6 +16,22 @@
 namespace ayra
 {
 
+namespace
+{
+
+[[nodiscard]] juce::ThreadPool& getPdfRenderPool()
+{
+    static juce::ThreadPool pool { 1 };
+    return pool;
+}
+
+} // namespace
+
+struct PdfViewComponent::RenderState
+{
+    std::atomic<std::uint64_t> generation { 0 };
+};
+
 //==============================================================================
 // Default LookAndFeel
 
@@ -122,23 +138,27 @@ void PdfViewComponent::LookAndFeelMethods::drawPdfViewPageShadow (juce::Graphics
 
 //==============================================================================
 
-PdfViewComponent::PdfViewComponent() = default;
+PdfViewComponent::PdfViewComponent()
+    : renderState (std::make_shared<RenderState>())
+{
+}
 
 PdfViewComponent::~PdfViewComponent()
 {
-    stopRenderJobs();
+    if (renderState != nullptr)
+        renderState->generation.fetch_add (1, std::memory_order_release);
+
+    currentDocument.reset();
 }
 
 void PdfViewComponent::loadDocument (const juce::String& filePath)
 {
-    auto candidate = std::make_unique<PdfDocument>();
+    auto candidate = std::make_shared<PdfDocument>();
 
     if (!candidate->open (juce::File (filePath)) || candidate->getPageCount() <= 0)
         return;
 
-    stopRenderJobs();
-    ownedDocument = std::move (candidate);
-    activateDocument (*ownedDocument);
+    activateDocument (std::move (candidate));
 }
 
 bool PdfViewComponent::thereIsADocumentLoaded() const
@@ -257,7 +277,7 @@ void PdfViewComponent::loadDocumentFromMemoryBlock (const void* data, int sizeIn
     if (data == nullptr || sizeInBytes <= 0)
         return;
 
-    auto candidate = std::make_unique<PdfDocument>();
+    auto candidate = std::make_shared<PdfDocument>();
 
     if (!candidate->open (data, static_cast<size_t> (sizeInBytes))
         || candidate->getPageCount() <= 0)
@@ -265,9 +285,7 @@ void PdfViewComponent::loadDocumentFromMemoryBlock (const void* data, int sizeIn
         return;
     }
 
-    stopRenderJobs();
-    ownedDocument = std::move (candidate);
-    activateDocument (*ownedDocument);
+    activateDocument (std::move (candidate));
 }
 
 void PdfViewComponent::getMemoryBlockFromDocument (juce::MemoryBlock& destData)
@@ -276,17 +294,15 @@ void PdfViewComponent::getMemoryBlockFromDocument (juce::MemoryBlock& destData)
         (void) currentDocument->saveToMemoryBlock (destData);
 }
 
-void PdfViewComponent::setDocument (PdfDocument& doc)
+void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
 {
-    if (&doc == currentDocument)
+    if (doc == nullptr || doc == currentDocument)
         return;
 
-    if (!doc.isOpen() || doc.getPageCount() <= 0)
+    if (!doc->isOpen() || doc->getPageCount() <= 0)
         return;
 
-    stopRenderJobs();
-    ownedDocument.reset();
-    activateDocument (doc);
+    activateDocument (std::move (doc));
 }
 
 void PdfViewComponent::addListener (Listener* l)
@@ -340,14 +356,14 @@ PdfPage PdfViewComponent::getCurrentPageInfo() const
     return thereIsADocumentLoaded() ? cachedPageInfo : PdfPage {};
 }
 
-void PdfViewComponent::activateDocument (PdfDocument& doc)
+void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
 {
-    currentDocument = &doc;
-    currentPageCount = doc.getPageCount();
+    currentDocument = std::move (doc);
+    currentPageCount = currentDocument != nullptr ? currentDocument->getPageCount() : 0;
     currentPage = currentPageCount > 0 ? 1 : 0;
     currentZoom = 1.0f;
     topLeft = {};
-    cachedPageInfo = currentPage > 0 ? doc.getPage (0) : PdfPage {};
+    cachedPageInfo = currentPage > 0 ? currentDocument->getPage (0) : PdfPage {};
 
     invalidatePageCache();
     requestPageRender();
@@ -356,8 +372,8 @@ void PdfViewComponent::activateDocument (PdfDocument& doc)
 
 void PdfViewComponent::invalidatePageCache()
 {
-    ++cacheGeneration;
-    (void) renderPool.removeAllJobs (true, 0);
+    if (renderState != nullptr)
+        renderState->generation.fetch_add (1, std::memory_order_release);
 
     cachedPageImage = {};
     repaint();
@@ -365,54 +381,65 @@ void PdfViewComponent::invalidatePageCache()
 
 void PdfViewComponent::requestPageRender()
 {
-    if (!thereIsADocumentLoaded())
+    if (!thereIsADocumentLoaded() || renderState == nullptr)
         return;
 
-    const auto generation = cacheGeneration;
+    const auto state = renderState;
+    const auto generation = state->generation.load (std::memory_order_acquire);
     const int pageIndex = currentPage - 1;
     const float rasterScale = currentZoom;
-    auto* const document = currentDocument;
+    const auto document = currentDocument;
     const juce::Component::SafePointer<PdfViewComponent> safeThis (this);
 
     try
     {
-        renderPool.addJob ([safeThis, document, generation, pageIndex, rasterScale]
-        {
-            const auto page = document->getPage (pageIndex);
-            auto image = page.isValid() ? document->renderPage (pageIndex, rasterScale)
-                                        : juce::Image {};
+        getPdfRenderPool().addJob (
+            [safeThis, state, document, generation, pageIndex, rasterScale]
+            {
+                if (state->generation.load (std::memory_order_acquire) != generation)
+                    return;
 
-            try
-            {
-                (void) juce::MessageManager::callAsync (
-                    [safeThis, generation, page, image = std::move (image)] () mutable
-                    {
-                        if (safeThis != nullptr)
-                            safeThis->publishPageRender (generation, page, std::move (image));
-                    });
-            }
-            catch (const std::bad_alloc&)
-            {
-            }
-        });
+                const auto page = document->getPage (pageIndex);
+
+                if (!page.isValid()
+                    || state->generation.load (std::memory_order_acquire) != generation)
+                {
+                    return;
+                }
+
+                auto image = document->renderPage (pageIndex, rasterScale);
+
+                if (state->generation.load (std::memory_order_acquire) != generation)
+                    return;
+
+                try
+                {
+                    (void) juce::MessageManager::callAsync (
+                        [safeThis, state, generation, page, image = std::move (image)] () mutable
+                        {
+                            if (safeThis != nullptr
+                                && state->generation.load (std::memory_order_acquire) == generation)
+                            {
+                                safeThis->publishPageRender (generation, page, std::move (image));
+                            }
+                        });
+                }
+                catch (const std::bad_alloc&)
+                {
+                }
+            });
     }
     catch (const std::bad_alloc&)
     {
     }
 }
 
-void PdfViewComponent::stopRenderJobs()
-{
-    ++cacheGeneration;
-    (void) renderPool.removeAllJobs (true, -1);
-    cachedPageImage = {};
-}
-
 void PdfViewComponent::publishPageRender (std::uint64_t generation,
                                           PdfPage page,
                                           juce::Image image)
 {
-    if (generation != cacheGeneration
+    if (renderState == nullptr
+        || generation != renderState->generation.load (std::memory_order_acquire)
         || page.index != currentPage - 1)
     {
         return;

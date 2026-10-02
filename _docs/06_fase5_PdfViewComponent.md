@@ -14,7 +14,7 @@ per visualizzare, navigare e interagire con il PDF. Sostituire `PDFComponent` le
 Il lavoro corrente e' diviso per ownership:
 
 **W01 - viewer core**
-- load file/memory e documento esterno non-owning;
+- load file/memory e documento condiviso tramite `std::shared_ptr<PdfDocument>`;
 - navigazione 1-based;
 - cache `juce::Image` della pagina corrente;
 - raster su worker dedicato, mai dentro `paint()`;
@@ -79,8 +79,7 @@ void PdfViewComponent::paint (juce::Graphics& g)
 
 **Strategia di caching**: W01 usa un worker dedicato per rasterizzare a `currentZoom`.
 `paint()` legge solo la cache gia' pubblicata. Ogni invalidazione incrementa una generation:
-un risultato worker con generation vecchia viene scartato sul Message Thread. Quando cambia
-il documento, i job vengono drenati prima di rilasciare il vecchio owner/puntatore.
+un risultato worker con generation vecchia viene scartato sul Message Thread. Ogni job cattura un `shared_ptr` del documento; cambio/distruzione del widget invalida la generation senza attendere il render precedente.
 W02 aggiungera' la device scale HiDPI (`displayScale * currentZoom`) senza cambiare le
 dimensioni logiche della pagina.
 
@@ -103,7 +102,7 @@ void invalidatePageCache()
 La cache va invalidata in questi metodi:
 - `loadDocument()` — nuovo documento
 - `loadDocumentFromMemoryBlock()` — nuovo documento
-- `setDocument()` — documento esterno collegato (gia' chiama `repaint()`)
+- `setDocument()` — documento condiviso collegato
 - `setPageNumber()` — cambia pagina
 - `setCurrentPageZoom()` — cambia zoom
 - `resized()` — cambia scala DPI o dimensione componente

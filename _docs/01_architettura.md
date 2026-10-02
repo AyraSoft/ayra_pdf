@@ -161,10 +161,10 @@ PdfViewComponent
   +-- currentDocument (PdfDocument*, puntatore — non-owning)
 ```
 
-- `loadDocument(path)` e `loadDocumentFromMemoryBlock(data, size)` caricano in `ownedDocument`
-  e impostano `currentDocument = &ownedDocument`.
-- `setDocument(PdfDocument& doc)` imposta `currentDocument = &doc` senza toccare `ownedDocument`.
-  Il chiamante possiede il documento e deve garantirne la vita per tutta la durata dell'uso.
+- `loadDocument(path)` e `loadDocumentFromMemoryBlock(data, size)` creano un
+  `std::shared_ptr<PdfDocument>` e lo assegnano a `currentDocument`.
+- `setDocument(std::shared_ptr<PdfDocument>)` condivide esplicitamente ownership.
+- I render job catturano il proprio `shared_ptr`: nessun raw pointer attraversa il boundary worker.
 
 ### Widget Pattern Ayra rispettato
 

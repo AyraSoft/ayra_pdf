@@ -413,7 +413,7 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 - nessuna copia autorevole del documento;
 - nessuna gesture/pan/HiDPI/search overlay (W02);
 - nessun alias o fallback legacy;
-- nessuna ownership implicita del `PdfDocument&` esterno.
+- nessun raw/non-owning lifetime del documento esterno: `setDocument` usa `std::shared_ptr<PdfDocument>`.
 
 **Invariants**:
 - `currentPage == 0` quando non esiste una pagina visualizzabile, altrimenti `1..pageCount`;
@@ -422,9 +422,10 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 - cache immagine = rappresentazione derivata; invalidazione deterministica su documento/pagina;
 - `paint()` non esegue parsing/raster: il raster gira su un worker dedicato del widget;
 - publication worker -> Message Thread usa `SafePointer` + generation token, quindi risultati obsoleti vengono scartati;
-- cambio/distruzione documento drena i job prima di rilasciare il lifetime non-owning;
+- cambio/distruzione widget invalida la generation senza attendere il worker; i job obsoleti terminano/scartano il risultato;
 - un load fallito lascia invariati documento corrente, pagina e cache;
-- un documento esterno deve restare vivo e non essere mutato mentre e' agganciato;
+- `currentDocument` usa ownership condivisa; ogni render job cattura il proprio owner;
+- un documento condiviso non deve essere mutato concorrentemente dal caller mentre e' in uso;
 - i Listener formali vengono notificati prima delle `std::function`, con bail-out se il callback distrugge il widget;
 - nessun falso evento `closed` quando si cambia semplicemente documento;
 - tutte le API widget e `paint` sono Message Thread only;
@@ -432,7 +433,7 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 - i renderer concreti serializzano le proprie API: PDFium process-wide, Apple per istanza.
 
 **Acceptance criteria W01**:
-- file/memory load e `setDocument` attivano solo documenti aperti con almeno una pagina;
+- file/memory load e `setDocument(shared_ptr)` attivano solo documenti aperti con almeno una pagina;
 - stato/getter, navigazione 1-based, export e save-to-memory sono reali;
 - `paint` fa solo compositing; nessuna chiamata `PdfDocument::renderPage` avviene sul Message Thread;
 - rotazioni 90/270 producono bounds logici corretti;

@@ -20,15 +20,16 @@ namespace ayra
 
 /** Viewer PDF cross-platform basato su PdfDocument.
  *
- *  Il widget possiede un PdfDocument quando carica file/buffer direttamente, oppure puo'
- *  osservare un PdfDocument esterno non-owning. Il documento resta l'unica source of truth:
- *  pagina corrente, zoom, posizione e cache immagine sono solo stato di presentazione.
+ *  Il documento attivo e' posseduto tramite std::shared_ptr. I load diretti creano il
+ *  PdfDocument condiviso; setDocument() collega un documento gia' condiviso. Il documento
+ *  resta l'unica source of truth: pagina, zoom, posizione e cache immagine sono view state.
  *
- *  Tutti i metodi del widget devono essere chiamati dal JUCE Message Thread.
+ *  Tutti i metodi pubblici del widget devono essere chiamati dal JUCE Message Thread.
+ *  Il raster gira su un worker del modulo che cattura un owner del documento: il widget puo'
+ *  cambiare documento o essere distrutto senza bloccare in attesa del render precedente.
  *
- *  Per un documento esterno, il caller deve garantirne lifetime e immutabilita' per tutto il
- *  periodo in cui e' collegato. Per sostituirlo, chiamare nuovamente setDocument() oppure
- *  caricare un documento owned dal widget.
+ *  Un PdfDocument condiviso non deve essere mutato concorrentemente dal caller mentre il
+ *  viewer lo sta usando.
  *
  *  @see PdfDocument, PdfPage
  */
@@ -124,10 +125,10 @@ public:
     /** Su failure destData resta invariato. */
     void getMemoryBlockFromDocument (juce::MemoryBlock& destData);
 
-    /** Collega un documento esterno aperto con almeno una pagina.
-     *  Il viewer non prende ownership: doc deve restare vivo e non mutare mentre e' collegato.
+    /** Collega un documento condiviso aperto con almeno una pagina.
+     *  Il viewer trattiene ownership condivisa anche per i render asincroni gia' accodati.
      */
-    void setDocument (PdfDocument& doc);
+    void setDocument (std::shared_ptr<PdfDocument> doc);
 
     //==============================================================================
     // EVENTI
@@ -147,19 +148,17 @@ private:
 
     [[nodiscard]] PdfPage getCurrentPageInfo() const;
 
-    void activateDocument (PdfDocument& doc);
+    struct RenderState;
+
+    void activateDocument (std::shared_ptr<PdfDocument> doc);
     void invalidatePageCache();
     void requestPageRender();
-    void stopRenderJobs();
     void publishPageRender (std::uint64_t generation, PdfPage page, juce::Image image);
     void notifyDocumentLoaded();
     void notifyPageChanged();
 
-    std::unique_ptr<PdfDocument> ownedDocument;
-    PdfDocument* currentDocument { nullptr };
-
-    juce::ThreadPool renderPool { 1 };
-    std::uint64_t cacheGeneration { 0 };
+    std::shared_ptr<PdfDocument> currentDocument;
+    std::shared_ptr<RenderState> renderState;
 
     juce::Image cachedPageImage;
     PdfPage cachedPageInfo;
