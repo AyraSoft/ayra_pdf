@@ -26,8 +26,9 @@ namespace ayra
  *  di terze parti richiesta. Rendering ad alta qualita' con antialiasing
  *  CoreGraphics e supporto nativo per font embedding, trasparenza, ecc.
  *
- *  Migrazione da MacPDFComponent.mm — completata nella Fase 2 del
- *  refactoring di ayra_pdf.
+ *  Migrazione current-only dal legacy MacPDFComponent.mm.
+ *  M01 (lifecycle/load/metadata) e' implementato; rendering, save e testo/ricerca
+ *  vengono completati nei microstep M02-M04 definiti in _docs/02_stato_attuale.md.
  *
  *  Usa il pattern Pimpl per isolare i tipi ObjC/CoreGraphics dagli
  *  header C++ — necessario per evitare contaminazione degli altri moduli.

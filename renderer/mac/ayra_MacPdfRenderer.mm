@@ -15,16 +15,15 @@
 
 // Implementazione CoreGraphics di MacPdfRenderer.
 //
-// Fase 2: migrazione completa da pdf_component/Mac_PDF_core/MacPDFComponent.mm.
-// Per ora tutti i metodi sono stub — il vecchio MacPDFViewComponent e' ancora attivo
-// e viene incluso in ayra_pdf.cpp per backward compatibility.
-//
-// Quando la Fase 2 sara' completata:
-//   1. Spostare tutta la logica CGPDFDocument da MacPDFComponent.mm qui
-//   2. Rimuovere MacPDFViewComponent e aggiornare ayra_pdf.cpp
-//   3. PdfViewComponent diventera' il widget unico (backward compat via PdfDocument)
+// Roadmap canonica: _docs/02_stato_attuale.md.
+// M01 implementa lifecycle, caricamento e metadati pagina.
+// I successivi M02-M04 completano rendering, serializzazione e testo/ricerca.
+// Il codice legacy e' solo riferimento storico e verra' rimosso al cutover current-only.
 
 #if JUCE_MAC || JUCE_IOS
+
+#include <cmath>
+#include <limits>
 
 namespace ayra
 {
@@ -36,9 +35,7 @@ namespace ayra
 struct MacPdfRenderer::Impl
 {
     CGPDFDocumentRef document { nullptr };  ///< Documento CoreGraphics corrente
-    juce::MemoryBlock pdfData;              ///< Copia del PDF in memoria per CGDataProvider
-
-    // TODO: Fase 2 — aggiungere CGDataProviderRef, cache pagine, mutex se necessario
+    juce::MemoryBlock pdfData;              ///< Backing storage per documenti caricati da memoria
 };
 
 // ======================================================================
@@ -55,14 +52,55 @@ MacPdfRenderer::~MacPdfRenderer()
 
 bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
 {
-    jassertfalse; // TODO: Fase 2 — migrare da MacPDFComponent.mm loadDocument()
-    return false;
+    if (!file.existsAsFile())
+        return false;
+
+    const auto path = file.getFullPathName();
+    CGDataProviderRef provider = CGDataProviderCreateWithFilename (path.toRawUTF8());
+
+    if (provider == nullptr)
+        return false;
+
+    CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
+    CGDataProviderRelease (provider);
+
+    if (newDocument == nullptr)
+        return false;
+
+    // Commit transazionale: un load fallito lascia intatto il documento corrente.
+    close();
+    impl->document = newDocument;
+    return true;
 }
 
 bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcept
 {
-    jassertfalse; // TODO: Fase 2 — migrare da MacPDFComponent.mm loadDocumentFromMemoryBlock()
-    return false;
+    if (data == nullptr || sizeBytes == 0)
+        return false;
+
+    juce::MemoryBlock newPdfData;
+    newPdfData.replaceAll (data, sizeBytes);
+
+    CGDataProviderRef provider = CGDataProviderCreateWithData (nullptr,
+                                                               newPdfData.getData(),
+                                                               newPdfData.getSize(),
+                                                               nullptr);
+
+    if (provider == nullptr)
+        return false;
+
+    CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
+    CGDataProviderRelease (provider);
+
+    if (newDocument == nullptr)
+        return false;
+
+    // Il provider del documento puo' leggere lazy dal buffer: trasferiamo il backing
+    // storage solo dopo che il nuovo documento e' stato creato con successo.
+    close();
+    impl->pdfData = std::move (newPdfData);
+    impl->document = newDocument;
+    return true;
 }
 
 bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
@@ -94,15 +132,60 @@ bool MacPdfRenderer::isLoaded() const noexcept
 
 int MacPdfRenderer::getPageCount() const noexcept
 {
-    if (impl->document == nullptr) { return 0; }
-    // TODO: Fase 2 — return (int)CGPDFDocumentGetNumberOfPages(impl->document);
-    return 0;
+    if (impl->document == nullptr)
+        return 0;
+
+    const auto count = CGPDFDocumentGetNumberOfPages (impl->document);
+    constexpr auto maxInt = static_cast<size_t> (std::numeric_limits<int>::max());
+
+    return count > maxInt ? std::numeric_limits<int>::max()
+                          : static_cast<int> (count);
 }
 
 PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 {
-    jassertfalse; // TODO: Fase 2
-    return {};
+    if (impl->document == nullptr || pageIndex < 0)
+        return {};
+
+    const auto pageNumber = static_cast<size_t> (pageIndex) + 1u;
+    const auto pageCount = CGPDFDocumentGetNumberOfPages (impl->document);
+
+    if (pageNumber > pageCount)
+        return {};
+
+    CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, pageNumber);
+
+    if (page == nullptr)
+        return {};
+
+    const auto mediaBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
+
+    const auto finite = [] (CGFloat value) noexcept
+    {
+        return std::isfinite (static_cast<double> (value));
+    };
+
+    if (CGRectIsNull (mediaBox) || CGRectIsEmpty (mediaBox) || CGRectIsInfinite (mediaBox)
+        || !finite (mediaBox.origin.x) || !finite (mediaBox.origin.y)
+        || !finite (mediaBox.size.width) || !finite (mediaBox.size.height))
+    {
+        return {};
+    }
+
+    const int rawRotation = CGPDFPageGetRotationAngle (page);
+    const int rotation = ((rawRotation % 360) + 360) % 360;
+
+    if ((rotation % 90) != 0)
+        return {};
+
+    PdfPage result;
+    result.index = pageIndex;
+    result.bounds = { static_cast<float> (mediaBox.origin.x),
+                      static_cast<float> (mediaBox.origin.y),
+                      static_cast<float> (mediaBox.size.width),
+                      static_cast<float> (mediaBox.size.height) };
+    result.rotation = rotation;
+    return result;
 }
 
 juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
