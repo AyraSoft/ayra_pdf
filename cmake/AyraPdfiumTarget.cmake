@@ -61,7 +61,7 @@ function(ayra_pdf_link_pdfium target)
                     GET "${AYRA_PDF_MANIFEST_JSON}"
                     assets "${AYRA_PDF_CANDIDATE_KEY}" abi)
 
-                if(NOT AYRA_PDF_ABI_JSON_ERROR
+                if(AYRA_PDF_ABI_JSON_ERROR STREQUAL "NOTFOUND"
                    AND AYRA_PDF_CANDIDATE_ABI STREQUAL AYRA_PDF_ABI)
                     set(AYRA_PDF_ASSET_KEY "${AYRA_PDF_CANDIDATE_KEY}")
                     break()
@@ -117,7 +117,7 @@ function(ayra_pdf_link_pdfium target)
         GET "${AYRA_PDF_MANIFEST_JSON}"
         assets "${AYRA_PDF_ASSET_KEY}" runtime_path)
 
-    if(AYRA_PDF_RUNTIME_JSON_ERROR)
+    if(NOT AYRA_PDF_RUNTIME_JSON_ERROR STREQUAL "NOTFOUND")
         message(FATAL_ERROR
             "No PDFium runtime for ${AYRA_PDF_ASSET_KEY}: "
             "${AYRA_PDF_RUNTIME_JSON_ERROR}")
@@ -143,7 +143,7 @@ function(ayra_pdf_link_pdfium target)
             GET "${AYRA_PDF_MANIFEST_JSON}"
             assets "${AYRA_PDF_ASSET_KEY}" link_path)
 
-        if(AYRA_PDF_LINK_JSON_ERROR)
+        if(NOT AYRA_PDF_LINK_JSON_ERROR STREQUAL "NOTFOUND")
             message(FATAL_ERROR
                 "No PDFium link_path for ${AYRA_PDF_ASSET_KEY}: "
                 "${AYRA_PDF_LINK_JSON_ERROR}")
