@@ -155,18 +155,30 @@ struct MacPdfRenderer::Impl
         if (textDocument != nil)
             return true;
 
-        if (provider == nullptr || document == nullptr)
+        if (provider == nullptr || document == nullptr
+            || pdfData == nullptr || pdfData->getSize() == 0
+            || static_cast<std::uint64_t> (pdfData->getSize())
+                   > detail::maxDocumentBytes
+            || pdfData->getSize()
+                   > static_cast<size_t> (std::numeric_limits<CFIndex>::max()))
+        {
             return false;
+        }
 
-        CFDataRef newData = CGDataProviderCopyData (provider);
+        // PDFKit receives an immutable CFData view over the renderer-owned
+        // source bytes. No second document-sized copy is required.
+        CFDataRef newData = CFDataCreateWithBytesNoCopy (
+            kCFAllocatorDefault,
+            static_cast<const UInt8*> (pdfData->getData()),
+            static_cast<CFIndex> (pdfData->getSize()),
+            kCFAllocatorNull);
 
         if (newData == nullptr)
             return false;
 
         const CFIndex length = CFDataGetLength (newData);
 
-        if (length <= 0
-            || static_cast<std::uint64_t> (length) > detail::maxDocumentBytes)
+        if (length <= 0)
         {
             CFRelease (newData);
             return false;
