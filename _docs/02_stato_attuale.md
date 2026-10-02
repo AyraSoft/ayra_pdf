@@ -385,6 +385,61 @@ build/link/deployment e fixture cross-platform restano **external pending**.
 
 ---
 
+## Change Contract — W01 PdfViewComponent core
+
+**Task model**: rendere il viewer funzionale per caricamento, navigazione e rendering della
+pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cache derivata.
+
+**Canonical owner**:
+- `PdfDocument`: documento, parsing, save e raster;
+- `PdfPage`: bounds PDF + rotazione e display size derivata;
+- `PdfViewComponent`: soltanto stato di presentazione (pagina 1-based, zoom/top-left) e cache;
+- LookAndFeel: elementi decorativi del widget.
+
+**Existing reusable path**:
+- `PdfDocument::open/getPage/renderPage/save/saveToMemoryBlock`;
+- `Component::BailOutChecker` + `ListenerList::callChecked` per callback lifetime-safe;
+- default LookAndFeel del modulo.
+
+**Expected files**:
+- `engine/ayra_PdfPage.h` — helper trivial di display size;
+- `renderer/mac/ayra_MacPdfRenderer.mm` — consuma l'helper, non duplica la formula;
+- `widgets/ayra_PdfViewComponent.h/.cpp`;
+- `widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h`;
+- documentazione widget/stato.
+
+**Forbidden ownership changes**:
+- nessun parsing/search nel widget;
+- nessuna copia autorevole del documento;
+- nessuna gesture/pan/HiDPI/search overlay (W02);
+- nessun alias o fallback legacy;
+- nessuna ownership implicita del `PdfDocument&` esterno.
+
+**Invariants**:
+- `currentPage == 0` quando non esiste una pagina visualizzabile, altrimenti `1..pageCount`;
+- conversione 1-based UI -> 0-based engine solo al boundary;
+- display width/height scambiano gli assi solo per rotazioni 90/270, tramite owner `PdfPage`;
+- cache immagine = rappresentazione derivata; invalidazione deterministica su documento/pagina;
+- un load fallito lascia invariati documento corrente, pagina e cache;
+- un documento esterno deve restare vivo e non essere mutato mentre e' agganciato;
+- i Listener formali vengono notificati prima delle `std::function`, con bail-out se il callback distrugge il widget;
+- nessun falso evento `closed` quando si cambia semplicemente documento;
+- tutte le API widget e `paint` sono Message Thread only;
+- W01 rasterizza a `currentZoom` e disegna l'immagine nei bounds logici; la device scale HiDPI appartiene a W02.
+
+**Acceptance criteria W01**:
+- file/memory load e `setDocument` attivano solo documenti aperti con almeno una pagina;
+- stato/getter, navigazione 1-based, export e save-to-memory sono reali;
+- `paint` usa cache e non ricalcola una pagina gia' cached;
+- rotazioni 90/270 producono bounds logici corretti;
+- notifiche loaded/page-changed sono lifetime-safe;
+- LookAndFeel ha forwarding default e un metodo dedicato allo sfondo pagina;
+- nessun `jassertfalse`/TODO resta nelle responsabilita' W01;
+- zoom/pan/gesture/HiDPI/search restano esplicitamente W02;
+- build/component test GUI: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
@@ -399,7 +454,7 @@ build/link/deployment e fixture cross-platform restano **external pending**.
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
 | `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ✅ P01-P03 completi staticamente | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
-| `widgets/ayra_PdfViewComponent.cpp` | ⚠️ parziale (setDocument funziona, resto stub) | tutte | 5 |
+| `widgets/ayra_PdfViewComponent.cpp` | 🟠 W01 in progress; W02 pending | tutte | 5 |
 | `widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h` | ✅ completo | tutte | 1 |
 | `widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h/.cpp` | ✅ completo | tutte | 1 |
 | `pdf_component/PDFComponent.h/.cpp` | ✅ funzionante (LEGACY) | macOS | - |

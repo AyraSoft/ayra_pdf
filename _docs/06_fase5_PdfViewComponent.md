@@ -11,14 +11,24 @@
 Implementare `widgets/ayra_PdfViewComponent.cpp` — il widget JUCE completo che usa `PdfDocument`
 per visualizzare, navigare e interagire con il PDF. Sostituire `PDFComponent` legacy.
 
-Deliverable:
-- Rendering della pagina corrente via cache `juce::Image`
-- Zoom corretto con anchor point fisso (fix del bug v1)
-- Pan con mouse drag e scroll wheel
-- Pinch gesture su trackpad macOS
-- Navigazione pagine
-- Evidenziazione risultati di ricerca (overlay)
-- API current-only: `PdfViewComponent` e' il solo widget pubblico dopo il cutover; nessun alias legacy
+Il lavoro corrente e' diviso per ownership:
+
+**W01 - viewer core**
+- load file/memory e documento esterno non-owning;
+- navigazione 1-based;
+- cache `juce::Image` della pagina corrente;
+- rendering nei bounds logici della pagina;
+- export/save-memory;
+- notifiche loaded/page-changed lifetime-safe.
+
+**W02 - viewport/interazione**
+- zoom con anchor corretto;
+- pan, wheel e pinch;
+- scala HiDPI;
+- clamp viewport;
+- overlay dei risultati di ricerca.
+
+Il widget e' API current-only: nessun alias legacy viene mantenuto.
 
 ---
 
@@ -58,17 +68,14 @@ void PdfViewComponent::paint (juce::Graphics& g)
         auto pageBounds = getCurrentPageBounds();
         laf.drawPdfViewPageShadow (g, pageBounds, *this);
 
-        // L'immagine e' gia' alla risoluzione corretta (renderizzata a currentScale * currentZoom).
-        // La disegniamo alla dimensione fisica (w/h del componente * zoom) senza ulteriore scaling.
-        g.drawImageAt (cachedPageImage, (int)topLeft.x, (int)topLeft.y);
+        // Il raster puo' avere piu' pixel dei bounds logici (HiDPI).
+        // Disegnare SEMPRE dentro pageBounds: drawImageAt renderebbe un raster 2x anche 2x piu' grande.
+        g.drawImage (cachedPageImage, pageBounds);
     }
 }
 ```
 
-**Strategia di caching**: l'immagine viene rasterizzata alla risoluzione `currentScale * currentZoom`.
-Questo significa che ad ogni cambio di zoom, la cache viene invalidata e re-rasterizzata.
-E' piu' semplice di una strategia "rasterizza a risoluzione massima e scala", ma causa
-un rendering leggermente meno nitido durante il drag-zoom. Accettabile per la prima implementazione.
+**Strategia di caching**: W01 usa `currentZoom` come raster scale e disegna il risultato nei bounds logici. W02 aggiungera' la device scale HiDPI (`displayScale * currentZoom`) senza cambiare le dimensioni logiche della pagina.
 
 ---
 
@@ -285,9 +292,10 @@ juce::Rectangle<float> PdfViewComponent::getCurrentPageBounds() const
     auto page = currentDocument->getPage (currentPage - 1);
     if (!page.isValid()) { return {}; }
 
+    const auto displaySize = page.getDisplaySize();
     return { topLeft.x, topLeft.y,
-             page.bounds.getWidth()  * currentZoom,
-             page.bounds.getHeight() * currentZoom };
+             displaySize.x * currentZoom,
+             displaySize.y * currentZoom };
 }
 ```
 
@@ -307,9 +315,8 @@ Quando `PdfViewComponent` e' completo e la verification esterna e' disponibile:
 
 ## Checklist Fase 5
 
-- [ ] Aggiungere `juce::Image cachedPageImage` come membro privato in `ayra_PdfViewComponent.h`
-- [ ] Aggiungere `float currentScale { 1.0f }` come membro privato
-- [ ] Aggiungere `juce::Point<float> lastDragPos {}` come membro privato
+- [ ] W01: aggiungere `juce::Image cachedPageImage` e helper di invalidazione/notifica
+- [ ] W02: aggiungere display scale HiDPI e stato drag
 - [ ] Implementare `invalidatePageCache()` — helper privato
 - [ ] Implementare `clampTopLeft()` — helper privato
 - [ ] Implementare `paint()` con cache e LookAndFeel
