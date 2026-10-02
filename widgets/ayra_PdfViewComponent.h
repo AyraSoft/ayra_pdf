@@ -135,6 +135,7 @@ public:
 
     /** Collega un documento condiviso aperto con almeno una pagina.
      *  Il viewer trattiene ownership condivisa anche per i render asincroni gia' accodati.
+     *  Passare nullptr chiude il documento corrente e invalida render/search pendenti.
      */
     void setDocument (std::shared_ptr<PdfDocument> doc);
 
@@ -201,7 +202,7 @@ private:
     std::shared_ptr<RenderState> renderState;
 
     juce::Image cachedPageImage;
-    PdfPage cachedPageInfo;
+    PdfPage currentPageInfo;
     int currentPageCount { 0 };
 
     juce::String searchQuery;

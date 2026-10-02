@@ -24,7 +24,8 @@ Non possiede parsing, text engine o raster algorithm.
 
 I metadata della pagina corrente vengono letti sincronicamente da `PdfDocument::getPage()`
 quando cambia pagina e restano disponibili indipendentemente dal completamento del raster.
-La cache asincrona riguarda soltanto l'immagine derivata.
+La cache asincrona riguarda soltanto l'immagine derivata. `setDocument(nullptr)` chiude il
+documento visualizzato, invalida il lavoro asincrono pendente e riporta il widget allo stato vuoto.
 
 Render e search usano un pool condiviso del modulo. Per ciascun widget:
 - al massimo un job render schedulato;

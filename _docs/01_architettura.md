@@ -70,6 +70,7 @@ guard del modulo, non limiti del formato PDF.
 - richieste coalesced, latest-request-wins;
 - publication sul Message Thread con generation token;
 - `paint()` fa solo compositing;
+- `setDocument(nullptr)` e' il clear canonico del documento visualizzato;
 - zoom/pan/HiDPI/search overlay sono stato visuale.
 
 Il documento condiviso non va mutato concorrentemente dal caller.

@@ -61,9 +61,8 @@ struct PdfViewComponent::RenderState final : private juce::AsyncUpdater,
     int searchPageIndex { -1 };
     juce::String searchQuery;
 
-    void detachOwner() noexcept
+    void cancelWork() noexcept
     {
-        owner = nullptr;
         renderGeneration.fetch_add (1, std::memory_order_release);
         searchGeneration.fetch_add (1, std::memory_order_release);
         cancelPendingUpdate();
@@ -78,6 +77,12 @@ struct PdfViewComponent::RenderState final : private juce::AsyncUpdater,
         const juce::ScopedLock completionGuard (completionLock);
         renderCompletion = {};
         searchCompletion = {};
+    }
+
+    void detachOwner() noexcept
+    {
+        owner = nullptr;
+        cancelWork();
     }
 
     void postRender (std::uint64_t generation, PdfPage page, juce::Image image)
@@ -378,7 +383,7 @@ void PdfViewComponent::setPageNumber (int pageNumber)
 
     currentPage = pageNumber;
     topLeft = {};
-    cachedPageInfo = pageInfo;
+    currentPageInfo = pageInfo;
     clampTopLeft();
 
     invalidatePageCache();
@@ -512,8 +517,26 @@ void PdfViewComponent::getMemoryBlockFromDocument (juce::MemoryBlock& destData)
 
 void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
 {
-    if (doc == nullptr || doc == currentDocument)
+    if (doc == currentDocument)
         return;
+
+    if (doc == nullptr)
+    {
+        if (renderState != nullptr)
+            renderState->cancelWork();
+
+        currentDocument.reset();
+        cachedPageImage = {};
+        currentPageInfo = {};
+        currentPageCount = 0;
+        currentPage = 0;
+        currentZoom = 1.0f;
+        topLeft = {};
+        searchQuery.clear();
+        searchResults.clearQuick();
+        repaint();
+        return;
+    }
 
     if (!doc->isOpen() || doc->getPageCount() <= 0)
         return;
@@ -585,7 +608,7 @@ void PdfViewComponent::paint (juce::Graphics& g)
         if (result.pageIndex != currentPage - 1)
             continue;
 
-        const auto highlightBounds = pdfBoundsToWidget (cachedPageInfo, result.bounds);
+        const auto highlightBounds = pdfBoundsToWidget (currentPageInfo, result.bounds);
 
         if (!highlightBounds.isEmpty())
             laf.drawPdfViewSearchHighlight (g, highlightBounds, *this);
@@ -670,7 +693,7 @@ PdfViewComponent::LookAndFeelMethods& PdfViewComponent::getLAF()
 
 PdfPage PdfViewComponent::getCurrentPageInfo() const
 {
-    return thereIsADocumentLoaded() ? cachedPageInfo : PdfPage {};
+    return thereIsADocumentLoaded() ? currentPageInfo : PdfPage {};
 }
 
 void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
@@ -681,7 +704,7 @@ void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
     currentZoom = 1.0f;
     rasterDeviceScale = 1.0f;
     topLeft = {};
-    cachedPageInfo = currentPage > 0 ? currentDocument->getPage (0) : PdfPage {};
+    currentPageInfo = currentPage > 0 ? currentDocument->getPage (0) : PdfPage {};
 
     searchQuery.clear();
     invalidateSearchResults();
@@ -797,7 +820,7 @@ void PdfViewComponent::publishPageRender (std::uint64_t generation,
         return;
     }
 
-    cachedPageInfo = page;
+    currentPageInfo = page;
     cachedPageImage = std::move (image);
     clampTopLeft();
     repaint();
