@@ -482,8 +482,13 @@ public:
 
         beginTest ("Resource budgets fail before touching oversized payload memory");
 
+        expectEquals (
+            PdfDocument::getMaximumDocumentBytes(),
+            detail::maxDocumentBytes);
+
         static constexpr char oneByte = 'x';
-        const auto oversizedDocumentBytes = static_cast<size_t> (detail::maxDocumentBytes + 1u);
+        const auto oversizedDocumentBytes = static_cast<size_t> (
+            PdfDocument::getMaximumDocumentBytes() + 1u);
         expect (! document.open (&oneByte, oversizedDocumentBytes));
         expect (document.isOpen());
         expectEquals (document.getPageCount(), 4);

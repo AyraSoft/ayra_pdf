@@ -85,7 +85,14 @@ public:
     void close() noexcept;
 
     //==============================================================================
-    // STATO
+    // STATO / RESOURCE BUDGET
+
+    /** Budget massimo canonico dei byte sorgente accettati da ayra_pdf.
+     *  E' un resource guard del modulo, non un limite del formato PDF.
+     *  I consumer che incapsulano un PDF in un proprio envelope persistente
+     *  devono derivare i propri limiti da questo valore, senza duplicarlo.
+     */
+    [[nodiscard]] static std::uint64_t getMaximumDocumentBytes() noexcept;
 
     /** Ritorna true se un documento e' attualmente aperto. */
     [[nodiscard]] bool isOpen() const noexcept;

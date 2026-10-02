@@ -58,6 +58,11 @@ void PdfDocument::close() noexcept
         renderer->close();
 }
 
+std::uint64_t PdfDocument::getMaximumDocumentBytes() noexcept
+{
+    return detail::maxDocumentBytes;
+}
+
 bool PdfDocument::isOpen() const noexcept
 {
     return renderer != nullptr && renderer->isLoaded();

@@ -102,3 +102,10 @@ implementazione canonica del widget.
 Il nome pubblico `PDFComponent` resta disponibile come alias source-compatible di
 `PdfViewComponent` per preservare i consumer esistenti. L'alias e' lo stesso tipo: non introduce
 un layer legacy, un adapter, un backend alternativo o una seconda source of truth.
+
+
+## Public resource-budget introspection
+
+`PdfDocument::getMaximumDocumentBytes()` exposes the module's canonical source-byte guard without
+making consumers depend on private renderer/detail headers. Consumer state envelopes can derive their
+own bounded overhead from this single value instead of duplicating the PDF limit.
