@@ -22,15 +22,15 @@ Per **Windows, Linux, Android** continuare con le sezioni seguenti (richiede PDF
 
 ## macOS / iOS
 
-Backend: **CoreGraphics** nativo (macOS 11+ / iOS 14+). Zero dipendenze esterne, zero configurazione aggiuntiva.
+Backend v2: **CoreGraphics + PDFKit** (macOS 11+ / iOS 14+). Sono framework Apple di sistema, senza dipendenze third-party. Il metadata JUCE del modulo dichiara `CoreGraphics PDFKit` per macOS e iOS.
 
-Dopo aver completato il Passo 0, il progetto compila e funziona. Non e' necessario scaricare PDFium ne' modificare Library Search Paths, Framework Search Paths o Extra Linker Flags.
+Non e' necessario scaricare PDFium per il backend Apple ne' configurare Library Search Paths. La verifica build/runtime resta comunque necessaria: in particolare l'integrazione iOS end-to-end e' external pending finche' il legacy AppKit non viene rimosso dal cutover current-only.
 
 ### macOS / iOS - PDFium dylib deployment (solo se PDFium e' linkato anche su Mac)
 
 Alcuni progetti dell'ecosistema Ayra linkano PDFium **anche** su macOS
 (`externalLibraries="pdfium"` in `.jucer`, oppure `target_link_libraries` con
-`libpdfium.dylib` su CMake). In quel caso il backend CoreGraphics resta vivo,
+`libpdfium.dylib` su CMake). In quel caso il backend CoreGraphics + PDFKit resta vivo,
 ma il linker risolve i simboli PDFium attraverso `libpdfium.dylib`.
 
 **Nota PDFium su macOS:** bblanchon distribuisce **solo** `.dylib` per Mac (in

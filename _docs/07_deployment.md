@@ -7,7 +7,7 @@
 
 ## macOS — dylib nel bundle VST3
 
-Il backend macOS usa CoreGraphics nativo e **non richiede** `libpdfium.dylib` a runtime.
+Il backend Apple corrente usa CoreGraphics + PDFKit di sistema e **non richiede** `libpdfium.dylib` a runtime.
 La dylib e' presente in `third_party/pdfium/mac/` ma il build di produzione macOS non la include.
 
 ### Se in futuro si usa PDFium anche su macOS (opzionale)
@@ -160,26 +160,14 @@ MyPlugin/
 
 ---
 
-## iOS — static lib nel bundle
+## iOS — backend corrente
 
-Su iOS il dynamic linking di librerie non di sistema non e' consentito dallo store.
-`libpdfium.a` (static archive) viene linkato direttamente nel binario del plugin.
+Il backend corrente iOS usa **CoreGraphics + PDFKit**, entrambi framework di sistema dichiarati
+nel metadata JUCE del modulo. Non serve distribuire PDFium ne' una libreria statica aggiuntiva.
 
-Non sono necessari step di deployment extra: la libreria e' compilata dentro il `.app`.
-
-Setup CMake:
-
-```cmake
-if(IOS)
-    target_link_libraries(MyPlugin PRIVATE
-        "${CMAKE_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/ios/libpdfium.a"
-    )
-endif()
-```
-
-L'archivio iOS di PDFium deve essere una fat library (o xcframework) per supportare
-sia Simulator (x86_64 / arm64) che Device (arm64). Lo script `setup_pdfium.sh` scarica
-gia' la versione con architecture corretta se `PLATFORM=ios`.
+Nota: l'integrazione iOS end-to-end del modulo resta **external pending** finche' il percorso
+legacy AppKit/macOS-specifico non viene eliminato in C01. Una eventuale variante futura basata
+su PDFium per iOS sarebbe un task architetturale separato e non fa parte del deployment corrente.
 
 ---
 
@@ -225,9 +213,9 @@ Android Gradle plugin copiera' automaticamente i `.so` di tutte le ABI nelle pos
 
 | Piattaforma | Formato | Deploy | Note |
 |---|---|---|---|
-| macOS CoreGraphics | n/a | Nessuno | Backend nativo, zero dipendenze esterne |
+| macOS CoreGraphics + PDFKit | system frameworks | Nessuno | Nessuna dipendenza third-party |
 | macOS PDFium (futuro) | .dylib | `Contents/MacOS/` + RPATH `@loader_path` | Firma separata prima del bundle |
 | Windows | .dll | Stessa cartella del .vst3 | In PATH come alternativa |
 | Linux | .so | Stessa cartella del .so | RPATH `$ORIGIN` nel linker |
-| iOS | .a | Linkato staticamente | Fat binary Sim+Device consigliato |
+| iOS CoreGraphics + PDFKit | system frameworks | Nessuno | End-to-end external pending fino a C01 |
 | Android | .so | APK, una per ABI | 4 ABI = 4 .so separati |

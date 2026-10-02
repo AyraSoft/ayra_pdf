@@ -23,13 +23,13 @@
 // RENDERER PLATFORM-SPECIFICO
 
 #if JUCE_MAC || JUCE_IOS
-  // Renderer nativo CoreGraphics (Fase 2: migrazione completa)
-  // Per ora include il vecchio MacPDFComponent per backward compat
+  // Backend v2 Apple: CoreGraphics + PDFKit.
+  // Il blocco AppKit legacy e' transitorio fino al cutover current-only C01.
   #include <CoreGraphics/CoreGraphics.h>
   #include <Cocoa/Cocoa.h>
   #include "pdf_component/Mac_PDF_core/PDFView.m"
   #include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
-  #include "renderer/mac/ayra_MacPdfRenderer.mm"  // skeleton Fase 2
+  #include "renderer/mac/ayra_MacPdfRenderer.mm"
 
 #elif JUCE_WINDOWS
   // Renderer PDFium (Fase 3: implementazione completa)

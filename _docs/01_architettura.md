@@ -19,8 +19,8 @@ ayra_pdf/
 +-- renderer/                   <- LAYER 2: backend di rendering (headless-safe)
 |   +-- ayra_PdfRenderer.h      <- class PdfRenderer (interfaccia pura)
 |   +-- mac/
-|   |   +-- ayra_MacPdfRenderer.h    <- CoreGraphics (macOS/iOS)
-|   |   +-- ayra_MacPdfRenderer.mm   <- implementazione ObjC/CoreGraphics
+|   |   +-- ayra_MacPdfRenderer.h    <- CoreGraphics + PDFKit (macOS/iOS)
+|   |   +-- ayra_MacPdfRenderer.mm   <- CoreGraphics lifecycle/raster + PDFKit text/search
 |   +-- pdfium/
 |       +-- ayra_PdfiumRenderer.h    <- PDFium Apache 2.0 (Win/Linux/Android)
 |       +-- ayra_PdfiumRenderer.cpp  <- implementazione C++/PDFium
@@ -67,7 +67,7 @@ Internamente possiede un `unique_ptr<PdfRenderer>` con il backend corretto.
 ### Layer 2 — Renderer (headless-safe)
 
 `PdfRenderer` e' un'interfaccia pura con due implementazioni concrete:
-- `MacPdfRenderer`: usa `CGPDFDocumentRef` (CoreGraphics, framework Apple). Solo macOS/iOS.
+- `MacPdfRenderer`: usa CoreGraphics per lifecycle/raster e PDFKit per text/search. macOS/iOS.
 - `PdfiumRenderer`: usa `FPDF_DOCUMENT` (PDFium, C API). Windows, Linux, Android.
 
 Entrambe usano il pattern Pimpl per tenere i tipi ObjC/PDFium fuori dagli header C++.

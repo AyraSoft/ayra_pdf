@@ -24,8 +24,8 @@ Ricognizione effettuata su `main@fc60d44e325265b85a1616205157ee871d95350a` prima
 dell'avvio dell'implementazione del 2026-10-02.
 
 - L'architettura v2 (engine / renderer / widget) esiste come skeleton.
-- Il solo path funzionale e' il legacy macOS/iOS basato su `PDFComponent` / CoreGraphics.
-- `MacPdfRenderer`, `PdfiumRenderer`, `PdfDocument` e gran parte di `PdfViewComponent` hanno stub.
+- Il solo path legacy operativo e' macOS/AppKit (`PDFView` deriva da `NSView`); non esiste un legacy iOS funzionante.
+- `MacPdfRenderer` M01-M04 e' implementato staticamente; `PdfiumRenderer`, `PdfDocument` e gran parte di `PdfViewComponent` hanno ancora lavoro pending.
 - Code search AyraSoft non ha trovato consumer di `PDFComponent` fuori da questo repository;
   l'audit va ripetuto immediatamente prima del cutover.
 - Il vecchio piano `using PDFComponent = PdfViewComponent` e' annullato: il Master impone current-only.
@@ -40,8 +40,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **M01** | Mac renderer | Lifecycle, load file/memory, close, page count/metadata | S00 | **done (static)** |
 | **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | **done (static)** |
 | **M03** | Mac renderer | Save file + save memory byte-preserving | M01 | **done (static)** |
-| **M04** | Mac renderer | Estrazione testo + ricerca PDFKit con bounds esatti | M01 | **in progress** |
-| **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | pending |
+| **M04** | Mac renderer | Estrazione testo + ricerca PDFKit con bounds esatti | M01 | **done (static)** |
+| **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | **in progress** |
 | **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | pending |
 | **P02** | PDFium | Render + save file/memory | P01 | pending |
 | **P03** | PDFium | Extract/search con bounds esatti | P01 | pending |
@@ -166,6 +166,60 @@ non garantisce bounds corretti.
 
 ---
 
+## Esito M04
+
+**M04 (2026-10-02)**: il backend Apple usa PDFKit come content model derivato dai medesimi
+byte del `CGDataProvider`. `extractText` usa `PDFPage.string`; `findText` e'
+case-insensitive, page-bounded, converte i range tramite `selectionForRange:` e pubblica
+solo bounds finite/non-empty in PDF page space. Query, testo per pagina e numero di match
+sono bounded. Superato il budget risultati, la ricerca fallisce atomicamente: nessuna lista
+troncata viene presentata come completa. La cache PDFKit viene invalidata prima di
+document/provider/backing. Nel renderer Apple non restano `jassertfalse` o TODO.
+Build/test runtime restano **external pending**.
+
+### Nota piattaforma Apple
+
+Il backend v2 e' scritto sotto `JUCE_MAC || JUCE_IOS` e usa framework disponibili su entrambe
+le piattaforme. Il legacy invece e' AppKit/macOS-specifico (`PDFView : NSView`): finche' C01
+non rimuove quel percorso, l'integrazione iOS dell'intero modulo NON e' dichiarata verificata.
+
+## Change Contract — D01 PdfDocument facade Apple
+
+**Task model**: trasformare `PdfDocument` da skeleton in factory/facade reale, senza spostare
+nel facade alcuna logica PDF.
+
+**Canonical owner**:
+- `PdfDocument`: ownership del `std::unique_ptr<PdfRenderer>` e sola delega;
+- `MacPdfRenderer`: tutta la semantica Apple;
+- `PdfiumRenderer`: semantica non-Apple, ancora pending P01-P03.
+
+**Expected files**:
+- `engine/ayra_PdfDocument.cpp`;
+- documentazione D01;
+- commenti di aggregazione in `ayra_pdf.cpp` solo se necessari.
+
+**Forbidden ownership changes**:
+- nessun parsing/raster/search nel facade;
+- nessuna duplicazione di safety limit o policy;
+- nessun fallback legacy;
+- nessuna modifica a JUCE/third-party.
+
+**Invariants**:
+- factory compile-time: Apple -> `MacPdfRenderer`, Win/Linux/Android -> `PdfiumRenderer`;
+- ogni metodo pubblico e' guard + delega, nessuna seconda source of truth;
+- nessun `jassertfalse`/TODO nel facade;
+- nessuna allocazione o chiamata PDF e' realtime-safe;
+- D01 certifica staticamente il percorso Apple; D02 resta bloccato da P01-P03.
+
+**Acceptance criteria D01**:
+- costruttore istanzia il renderer corretto;
+- open/save/close/state/page/render/search/extract delegano 1:1;
+- `getRenderer()` resta accesso non-owning avanzato;
+- diff audit statico completato;
+- build/test macOS+iOS: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
@@ -176,7 +230,7 @@ non garantisce bounds corretti.
 | `engine/ayra_PdfDocument.cpp` | ❌ stub (tutti jassertfalse) | tutte | 4 |
 | `renderer/ayra_PdfRenderer.h` | ✅ interfaccia completa | tutte | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
-| `renderer/mac/ayra_MacPdfRenderer.mm` | 🟠 M01-M03 completi staticamente; M04 in progress | macOS/iOS | 2 |
+| `renderer/mac/ayra_MacPdfRenderer.mm` | ✅ M01-M04 completi staticamente | macOS/iOS | 2 |
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
 | `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ❌ stub (jassertfalse), solo close() parziale | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
@@ -334,9 +388,7 @@ return juce::Rectangle<float> {
 Per documenti standard con `MediaBox = [0 0 595 842]` questo non e' visibile.
 Per documenti con `MediaBox = [36 72 595 842]` (margini non zero), le coordinate sono errate.
 
-**Soluzione**: in `MacPdfRenderer::getPage()`, convertire `mediaBox.origin.y` con
-`pageHeight - origin.y - height` o, se si usa la rappresentazione di juce `(x, y, w, h)`,
-assicurarsi che `y` sia l'angolo in alto a sinistra.
+**Soluzione v2**: `MacPdfRenderer::getPage()` mantiene volutamente le bounds canoniche in PDF page space (72 dpi, lower-left/Y-up). La conversione verso coordinate JUCE/schermo appartiene esclusivamente al widget, evitando doppie conversioni.
 
 ---
 

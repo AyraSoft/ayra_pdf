@@ -21,7 +21,7 @@ ayra_pdf/
 │
 ├── renderer/                          <- backend platform-specific (Fase 3)
 │   ├── ayra_PdfRenderer.h             <- interfaccia pura (astrazione backend)
-│   ├── mac/ayra_MacPdfRenderer.mm     <- CoreGraphics: macOS/iOS, zero dipendenze
+│   ├── mac/ayra_MacPdfRenderer.mm     <- CoreGraphics + PDFKit: macOS/iOS
 │   └── pdfium/ayra_PdfiumRenderer.h/.cpp  <- PDFium: Windows/Linux/Android
 │
 ├── widgets/                           <- JUCE Components (Fase 4)
@@ -54,7 +54,7 @@ ayra_pdf/
 | Layer | Dipendenze | Headless | Descrizione |
 |-------|-----------|---------|-------------|
 | `engine/` | core + tipi grafici usati dall'API (`juce::Image`) | senza finestre | Stato documento, navigazione, ricerca, estrazione testo |
-| `renderer/` | tipi grafici JUCE + CoreGraphics o PDFium | senza finestre | Rasterizzazione pagine in `juce::Image` |
+| `renderer/` | tipi grafici JUCE + CoreGraphics/PDFKit o PDFium | senza finestre | Rasterizzazione + content model PDF |
 | `widgets/` | JUCE GUI + engine + renderer | no | Componenti visuali interattivi |
 
 L'engine non include mai header GUI. Un agente server-side o un renderer offline possono usare solo `engine/` + `renderer/` senza aprire alcuna finestra.
@@ -72,12 +72,17 @@ L'engine non include mai header GUI. Un agente server-side o un renderer offline
 | Estrazione testo | ✓ | ✓ | ✓* | ✓* | ✓* |
 | Export PDF | ✓ | ✓ | ✓* | ✓* | ✓* |
 | Headless (no GUI) | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Backend | CoreGraphics | CoreGraphics | PDFium | PDFium | PDFium |
+| Backend target | CoreGraphics + PDFKit | CoreGraphics + PDFKit | PDFium | PDFium | PDFium |
 | Setup extra | nessuno | nessuno | setup_pdfium | setup_pdfium | setup_pdfium |
 
 `*` = richiede PDFium installato via `scripts/setup_pdfium.sh/.ps1` — implementazione in Fase 3.
 
-> **Stato reale (giugno 2026):** la matrice descrive il design target dell'architettura v2, **non** lo stato corrente. L'engine `PdfDocument`, i renderer v2 (`MacPdfRenderer`, `PdfiumRenderer`) e il widget v2 (`PdfViewComponent`) sono **skeleton** (tutti i metodi sono `jassertfalse` / `return {}`). L'unico path funzionante oggi e' il **LEGACY `pdf_component/PDFComponent`**, attivo **solo su macOS/iOS** via `MacPDFComponent.mm` (CoreGraphics). Vedi sezione "Fasi di Sviluppo" per il dettaglio.
+> **Stato reale (2 ottobre 2026):** la matrice sopra descrive il target v2, non una
+> certificazione runtime. `MacPdfRenderer` M01-M04 e' implementato e static-audited
+> (CoreGraphics + PDFKit), ma `PdfDocument` non e' ancora collegato al renderer.
+> `PdfiumRenderer` e `PdfViewComponent` restano incompleti. Il solo path legacy
+> attualmente operativo e' **macOS/AppKit**; il legacy usa `NSView` e non costituisce
+> un'implementazione iOS. Build/test/CI restano external pending.
 
 ---
 
@@ -288,7 +293,7 @@ Lo stato e il piano canonico sono in `_docs/02_stato_attuale.md`.
 **Per tutti i sistemi — primo passo obbligatorio:**
 Aprire il progetto in Projucer → **Modules** → **+** → *Add a module from a specified folder* → selezionare `Juce Modules/ayra_pdf/`. La dipendenza `juce_gui_extra` viene aggiunta automaticamente.
 
-**macOS / iOS** — nessun altro passo. CoreGraphics e' un framework di sistema, zero configurazione extra.
+**macOS / iOS** — nessun setup third-party. CoreGraphics e PDFKit sono framework Apple di sistema e vengono dichiarati dal metadata del modulo.
 
 **Windows** (Fase 3 — PDFium):
 
@@ -353,13 +358,13 @@ endif()
 **Licenza:** Apache 2.0 — commercial-safe, nessun obbligo copyleft.
 
 **Uso nei backend:**
-- macOS / iOS: non usato. CoreGraphics nativo e' il backend.
+- macOS / iOS: non usato dal backend corrente; il backend usa CoreGraphics + PDFKit di sistema.
 - Windows / Linux / Android: PDFium e' il backend esclusivo.
 
 **Dimensione binari (stima):**
 - Static library (Linux/iOS): ~15-20 MB aggiuntivi al plugin
 - DLL dinamica (Windows): ~10-15 MB distribuita separatamente
-- macOS: 0 MB (CoreGraphics)
+- macOS/iOS: 0 MB third-party per il backend corrente (CoreGraphics + PDFKit di sistema)
 
 **Dove si trovano i file:**
 
@@ -406,12 +411,12 @@ e' piu' la source of truth dell'avanzamento. Il piano operativo corrente usa mic
 (`S00`, `M01`...`V01`) ed e' mantenuto esclusivamente in `_docs/02_stato_attuale.md`.
 
 Sintesi al 2026-10-02:
-- skeleton v2 e API: presenti;
-- renderer Apple v2: implementazione in avvio;
+- renderer Apple v2 M01-M04: **done (static)**;
+- `PdfDocument`: D01 in progress;
 - renderer PDFium: stub;
-- `PdfDocument`: stub;
 - `PdfViewComponent`: parziale;
-- legacy macOS/iOS: unico path funzionante, destinato a rimozione current-only;
+- legacy operativo: macOS/AppKit soltanto, destinato a rimozione current-only;
+- iOS v2: codice backend presente ma integrazione end-to-end da verificare esternamente;
 - build/test/CI: non eseguibili nell'ambiente AI corrente; verification esterna richiesta.
 
 ---
@@ -421,4 +426,4 @@ Sintesi al 2026-10-02:
 Copyright Ayra Soft. Tutti i diritti riservati.
 
 PDFium (usato su Windows/Linux/Android): Apache License 2.0.
-CoreGraphics (usato su macOS/iOS): framework di sistema Apple, nessuna licenza aggiuntiva.
+CoreGraphics e PDFKit (backend Apple): framework di sistema Apple, nessuna dipendenza third-party.

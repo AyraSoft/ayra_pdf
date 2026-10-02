@@ -62,7 +62,6 @@
 #endif
 
 //==============================================================================
-// BACKWARD COMPATIBILITY -- Fase 5: decommentare quando PdfViewComponent e' completo
-// namespace ayra { using PDFComponent = PdfViewComponent; }
-// Per ora PDFComponent e' ancora in pdf_component/PDFComponent.h (LEGACY)
+// LEGACY TRANSITORIO -- solo fino al cutover current-only C01.
+// Nessun alias PDFComponent -> PdfViewComponent verra' introdotto.
 #include "pdf_component/PDFComponent.h"

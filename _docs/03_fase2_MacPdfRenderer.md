@@ -226,8 +226,8 @@ documenti malformati; le allocazioni C++ vengono gestite senza violare le firme 
 - [x] `getPage` — range check 0-based, bounds finite in PDF user space, rotazione normalizzata
 - [x] `renderPage` — bounded SoftwareImage + CGBitmapContext + rotation/orientation contract
 - [ ] `extractText` — `CGPDFScanner` con operatori Tj/TJ/'/"
-- [ ] `findText` — PDFKit selections, bounds reali in page space (M04)
-- [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
+- [x] `findText` — PDFKit page-bounded selections, bounds reali in page space
+- [x] Nessun `jassertfalse`/TODO residuo nel renderer Apple
 - [x] `close()` idempotente: documento -> provider -> backing memory
 - [ ] External: rendering asimmetrico + rotazioni 0/90/180/270 + MediaBox non-zero
 - [ ] External: byte equality/round-trip file e memory
