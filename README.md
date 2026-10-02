@@ -132,6 +132,8 @@ lock process-wide. Il caller deve comunque rispettare il lifetime dell'oggetto r
 - Dimensione documento, raster, testo, query e numero risultati sono bounded.
 - Il budget sorgente canonico e' esposto da `PdfDocument::getMaximumDocumentBytes()`.
 - Open file/memory e' replacement transazionale: un candidato fallito preserva il documento attivo.
+- Ogni documento aperto possiede uno snapshot byte immutabile della sorgente.
+- `sourceBytesEqualFile()` verifica identita' byte-esatta con un file, senza fingerprint.
 - Save file/memory e' byte-preserving e transazionale.
 - Rendering/parsing/search non sono realtime-safe e non vanno chiamati dal processBlock.
 - Il widget non esegue parsing o raster dentro `paint()`.

@@ -109,3 +109,13 @@ un layer legacy, un adapter, un backend alternativo o una seconda source of trut
 `PdfDocument::getMaximumDocumentBytes()` exposes the module's canonical source-byte guard without
 making consumers depend on private renderer/detail headers. Consumer state envelopes can derive their
 own bounded overhead from this single value instead of duplicating the PDF limit.
+
+
+## Immutable source bytes
+
+A loaded `PdfDocument` owns the exact source bytes for its full lifetime. File loads are first
+materialized into a bounded immutable snapshot and native parsing is attached to that snapshot.
+Changing/replacing the external file after open therefore cannot change the already-open document or
+its byte-preserving save result. `sourceBytesEqualFile()` performs exact byte comparison and never
+uses a fingerprint as proof of identity. PDFium captures a shared immutable byte snapshot under the
+process lock and performs file I/O/copies after releasing the global FPDF lock.

@@ -675,6 +675,44 @@ public:
         expect (document.saveToMemoryBlock (saved));
         expect (saved == fixture);
 
+        beginTest ("Owned source snapshot survives external file mutation");
+
+        {
+            auto sourceFile = juce::File::getSpecialLocation (
+                                  juce::File::tempDirectory)
+                                  .getNonexistentChildFile (
+                                      "ayra_pdf_source_identity",
+                                      ".pdf",
+                                      false);
+
+            expect (sourceFile.replaceWithData (
+                fixture.getData(),
+                fixture.getSize()));
+
+            PdfDocument fileDocument;
+            expect (fileDocument.open (sourceFile));
+            expect (fileDocument.sourceBytesEqualFile (sourceFile));
+
+            const auto changedBytes = makeWinAnsiTextFixture();
+            expect (changedBytes.getSize() > 0);
+            expect (sourceFile.replaceWithData (
+                changedBytes.getData(),
+                changedBytes.getSize()));
+
+            expect (! fileDocument.sourceBytesEqualFile (sourceFile));
+
+            juce::MemoryBlock preservedSnapshot;
+            expect (fileDocument.saveToMemoryBlock (preservedSnapshot));
+            expect (preservedSnapshot == fixture);
+
+            expect (sourceFile.replaceWithData (
+                fixture.getData(),
+                fixture.getSize()));
+            expect (fileDocument.sourceBytesEqualFile (sourceFile));
+
+            (void) sourceFile.deleteFile();
+        }
+
         beginTest ("Failed replacement load is transactional");
 
         static constexpr char invalidPdf[] = "not a pdf";

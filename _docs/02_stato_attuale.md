@@ -47,6 +47,7 @@ renderer concreti.
 - load file/memory bounded e transazionale;
 - metadata page-space + /Rotate;
 - raster ARGB bounded;
+- source bytes owned e immutabili anche per load da file;
 - save file/memory byte-preserving;
 - text/search Unicode;
 - lock per istanza.
@@ -56,7 +57,7 @@ renderer concreti.
 `PdfiumRenderer`:
 - lifecycle process-wide corretto;
 - tutte le API FPDF serializzate globalmente;
-- owned memory load;
+- owned immutable source bytes;
 - save byte-preserving;
 - raster diretto e bounded;
 - text/search UTF-16 e bounds reali;
