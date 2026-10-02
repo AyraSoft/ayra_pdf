@@ -708,6 +708,25 @@ public:
         expect (document.saveToMemoryBlock (saved));
         expect (saved == fixture);
 
+        beginTest ("Save-to-file is byte-preserving");
+
+        {
+            auto savedFile = juce::File::getSpecialLocation (
+                                 juce::File::tempDirectory)
+                                 .getNonexistentChildFile (
+                                     "ayra_pdf_save_contract",
+                                     ".pdf",
+                                     false);
+
+            expect (document.save (savedFile));
+
+            juce::MemoryBlock savedFileBytes;
+            expect (savedFile.loadFileAsData (savedFileBytes));
+            expect (savedFileBytes == fixture);
+
+            (void) savedFile.deleteFile();
+        }
+
         beginTest ("Owned source snapshot survives external file mutation");
 
         {
@@ -905,7 +924,7 @@ public:
         expect (! document.isOpen());
         expectEquals (document.getPageCount(), 0);
 
-        beginTest ("Save failure leaves destination memory unchanged");
+        beginTest ("Save failure leaves destinations unchanged");
 
         static constexpr char sentinelBytes[] = "sentinel";
         juce::MemoryBlock destination (sentinelBytes, sizeof (sentinelBytes) - 1);
@@ -913,6 +932,25 @@ public:
 
         expect (! document.saveToMemoryBlock (destination));
         expect (destination == originalDestination);
+
+        auto destinationFile = juce::File::getSpecialLocation (
+                                   juce::File::tempDirectory)
+                                   .getNonexistentChildFile (
+                                       "ayra_pdf_save_failure",
+                                       ".bin",
+                                       false);
+
+        expect (destinationFile.replaceWithData (
+            sentinelBytes,
+            sizeof (sentinelBytes) - 1));
+
+        expect (! document.save (destinationFile));
+
+        juce::MemoryBlock destinationFileBytes;
+        expect (destinationFile.loadFileAsData (destinationFileBytes));
+        expect (destinationFileBytes == originalDestination);
+
+        (void) destinationFile.deleteFile();
     }
 };
 

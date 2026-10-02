@@ -143,3 +143,7 @@ ctest --test-dir build/pdf-core --output-on-failure -C Release
 ```
 
 Cross-compiled targets are intentionally not registered as host-runnable CTest tests.
+
+
+The core contract now verifies byte equality for both memory and file save paths, plus transactional
+failure semantics for a pre-existing destination file after the document has been closed.
