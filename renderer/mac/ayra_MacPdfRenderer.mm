@@ -436,11 +436,9 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
     if (!pageInfo.isValid())
         return {};
 
-    const bool quarterTurn = pageInfo.rotation == 90 || pageInfo.rotation == 270;
-    const double widthPoints = quarterTurn ? static_cast<double> (pageInfo.bounds.getHeight())
-                                           : static_cast<double> (pageInfo.bounds.getWidth());
-    const double heightPoints = quarterTurn ? static_cast<double> (pageInfo.bounds.getWidth())
-                                            : static_cast<double> (pageInfo.bounds.getHeight());
+    const auto displaySize = pageInfo.getDisplaySize();
+    const double widthPoints = static_cast<double> (displaySize.x);
+    const double heightPoints = static_cast<double> (displaySize.y);
     const double widthPixels = std::ceil (widthPoints * static_cast<double> (scale));
     const double heightPixels = std::ceil (heightPoints * static_cast<double> (scale));
 

@@ -41,8 +41,7 @@ namespace ayra
  */
 struct PdfLookAndFeelMethods : public PdfViewComponent::LookAndFeelMethods
 {
-    // Eredita tutti i metodi virtual da PdfViewComponent::LookAndFeelMethods.
-    // Aggiungere qui i metodi di eventuali widget aggiuntivi del modulo (future estensioni).
+    // Eredita i forwarding default del widget; l'app override-a solo cio' che personalizza.
 };
 
 } // namespace ayra

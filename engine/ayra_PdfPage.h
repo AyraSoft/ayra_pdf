@@ -35,6 +35,16 @@ struct PdfPage
 
     /** Ritorna true se la pagina ha un indice valido e dimensioni non zero. */
     [[nodiscard]] inline bool isValid() const noexcept { return index >= 0 && !bounds.isEmpty(); }
+
+    /** Dimensione visuale della pagina dopo l'applicazione della rotazione.
+     *  Il punto usa x = larghezza e y = altezza, sempre in punti PDF (1/72").
+     */
+    [[nodiscard]] inline juce::Point<float> getDisplaySize() const noexcept
+    {
+        const bool swapsAxes = rotation == 90 || rotation == 270;
+        return swapsAxes ? juce::Point<float> { bounds.getHeight(), bounds.getWidth() }
+                         : juce::Point<float> { bounds.getWidth(), bounds.getHeight() };
+    }
 };
 
 } // namespace ayra

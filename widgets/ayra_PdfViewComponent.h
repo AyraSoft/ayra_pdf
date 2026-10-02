@@ -18,193 +18,149 @@
 namespace ayra
 {
 
-/** Widget per la visualizzazione di documenti PDF.
+/** Viewer PDF cross-platform basato su PdfDocument.
  *
- *  Visualizzatore PDF cross-platform con supporto a zoom, pan e navigazione
- *  tra le pagine. Retrocompatibile con l'API di PDFComponent: i metodi
- *  pubblici originali sono mantenuti con firma identica.
+ *  Il widget possiede un PdfDocument quando carica file/buffer direttamente, oppure puo'
+ *  osservare un PdfDocument esterno non-owning. Il documento resta l'unica source of truth:
+ *  pagina corrente, zoom, posizione e cache immagine sono solo stato di presentazione.
  *
- *  Internamente usa PdfDocument, che sceglie automaticamente il renderer
- *  corretto per la piattaforma (MacPdfRenderer su macOS/iOS, PdfiumRenderer
- *  su Windows/Linux/Android).
+ *  Tutti i metodi del widget devono essere chiamati dal JUCE Message Thread.
  *
- *  ### Modalita' d'uso
+ *  Per un documento esterno, il caller deve garantirne lifetime e immutabilita' per tutto il
+ *  periodo in cui e' collegato. Per sostituirlo, chiamare nuovamente setDocument() oppure
+ *  caricare un documento owned dal widget.
  *
- *  **Documento owned** (caso comune — il widget carica e possiede il file):
- *  @code
- *  ayra::PdfViewComponent viewer;
- *  viewer.loadDocument ("/path/to/doc.pdf");
- *  addAndMakeVisible (viewer);
- *  @endcode
- *
- *  **Documento esterno** (il documento e' gestito esternamente):
- *  @code
- *  ayra::PdfDocument sharedDoc;
- *  sharedDoc.open (file);
- *  ayra::PdfViewComponent viewer;
- *  viewer.setDocument (sharedDoc);  // viewer non possiede il documento
- *  @endcode
- *
- *  ### Customizzazione visiva
- *  Implementa PdfViewComponent::LookAndFeelMethods nel tuo LookAndFeel per
- *  personalizzare sfondi, ombre e testo "nessun documento".
- *
- *  Fase 5: implementazione completa (per ora delega al vecchio PDFComponent).
- *
- *  @see PdfDocument, PDFComponent (LEGACY)
+ *  @see PdfDocument, PdfPage
  */
 class PdfViewComponent : public juce::Component
 {
 public:
-    //==============================================================================
-    /// Colour IDs nel namespace 0x3AB0xxx (convenzione ayra_pdf).
     enum ColourIds
     {
-        backgroundColourId    = 0x3AB0001,  ///< Colore dello sfondo attorno alla pagina
-        pageColourId          = 0x3AB0002,  ///< Colore di sfondo della pagina (quando il PDF non ha sfondo)
-        shadowColourId        = 0x3AB0003,  ///< Colore dell'ombra sotto la pagina
-        noDocumentTextColourId = 0x3AB0004  ///< Colore del testo "Nessun documento caricato"
+        backgroundColourId     = 0x3AB0001,
+        pageColourId           = 0x3AB0002,
+        shadowColourId         = 0x3AB0003,
+        noDocumentTextColourId = 0x3AB0004
     };
 
-    //==============================================================================
-    /// Interfaccia LookAndFeel per la customizzazione del rendering visivo.
+    /** Hook LookAndFeel del viewer.
+     *  Le implementazioni base inoltrano al PdfDefaultLookAndFeel, quindi un LookAndFeel
+     *  applicativo puo' override-are soltanto gli elementi che vuole personalizzare.
+     */
     struct LookAndFeelMethods
     {
         virtual ~LookAndFeelMethods() = default;
 
-        /** Disegna lo sfondo del widget (area attorno alla pagina PDF). */
-        virtual void drawPdfViewBackground (juce::Graphics& g, int width, int height, PdfViewComponent& comp) = 0;
-
-        /** Disegna il testo/grafica mostrata quando nessun documento e' caricato. */
-        virtual void drawPdfViewNoDocument (juce::Graphics& g, int width, int height, PdfViewComponent& comp) = 0;
-
-        /** Disegna l'ombra attorno alla pagina PDF. */
-        virtual void drawPdfViewPageShadow (juce::Graphics& g, juce::Rectangle<float> pageBounds, PdfViewComponent& comp) = 0;
+        virtual void drawPdfViewBackground (juce::Graphics&, int width, int height, PdfViewComponent&);
+        virtual void drawPdfViewNoDocument (juce::Graphics&, int width, int height, PdfViewComponent&);
+        virtual void drawPdfViewPageBackground (juce::Graphics&, juce::Rectangle<float> pageBounds, PdfViewComponent&);
+        virtual void drawPdfViewPageShadow (juce::Graphics&, juce::Rectangle<float> pageBounds, PdfViewComponent&);
     };
 
-    //==============================================================================
-    /// Listener per gli eventi semantici del viewer.
     class Listener
     {
     public:
         virtual ~Listener() = default;
 
-        /** Chiamato quando l'utente naviga a una nuova pagina. @param newPage  Numero pagina 1-based. */
+        /** Evento di navigazione. newPage usa numerazione utente 1-based. */
         virtual void pdfPageChanged (PdfViewComponent* comp, int newPage) = 0;
 
-        /** Chiamato quando un documento viene caricato con successo. */
+        /** Evento emesso dopo l'attivazione riuscita di un nuovo documento. */
         virtual void pdfDocumentLoaded (PdfViewComponent* comp) {}
-
-        /** Chiamato quando il documento viene chiuso. */
-        virtual void pdfDocumentClosed (PdfViewComponent* comp) {}
     };
 
-    //==============================================================================
     PdfViewComponent();
     ~PdfViewComponent() override;
 
     //==============================================================================
-    // API BACKWARD COMPATIBLE — stessa firma di PDFComponent
+    // DOCUMENTO E NAVIGAZIONE
 
-    /** Carica un documento PDF dal percorso specificato.
-     *  @param filePath  Percorso assoluto al file PDF.
-     */
     void loadDocument (const juce::String& filePath);
 
-    /** Ritorna true se un documento e' attualmente caricato. */
     [[nodiscard]] bool thereIsADocumentLoaded() const;
-
-    /** Ritorna il numero totale di pagine del documento corrente (0 se nessun doc). */
     [[nodiscard]] int getTotPagesNum() const;
 
-    /** Ritorna il numero di pagina attualmente visualizzata (1-based). */
+    /** Pagina visualizzata 1-based; 0 quando non esiste una pagina attiva. */
     [[nodiscard]] int getCurrentPageOnScreen() const;
 
-    /** Naviga alla pagina specificata (1-based). */
+    /** Naviga a una pagina utente 1-based. Valori fuori range non modificano lo stato. */
     void setPageNumber (int pageNumber);
 
-    /** Ritorna la larghezza del documento in punti PDF. */
+    /** Dimensioni native visuali della pagina corrente, in punti PDF e dopo /Rotate. */
     [[nodiscard]] float getDocumentWidth() const;
-
-    /** Ritorna l'altezza del documento in punti PDF. */
     [[nodiscard]] float getDocumentHeight() const;
 
-    /** Ritorna il fattore di zoom corrente. */
+    //==============================================================================
+    // VIEWPORT
+
     [[nodiscard]] float getCurrentPageZoom() const;
 
-    /** Imposta il fattore di zoom mantenendo il punto di handle fisso sullo schermo.
-     *  @param zoom         Nuovo fattore di zoom (1.0 = dimensione nativa).
-     *  @param handlePoint  Punto in coordinate widget attorno a cui centrare lo zoom.
-     */
     void setCurrentPageZoom (float zoom, juce::Point<float> handlePoint);
 
-    /** Overload convenienza con coordinate int. */
     inline void setCurrentPageZoom (float zoom, juce::Point<int> handlePoint)
     {
         setCurrentPageZoom (zoom, handlePoint.toFloat());
     }
 
-    /** Ritorna la posizione corrente del top-left della pagina in coordinate widget. */
     [[nodiscard]] juce::Point<float> getCurrentPageTopLeftPosition() const;
-
-    /** Imposta la posizione del top-left della pagina in coordinate widget. */
     void setCurrentPageTopLeftPosition (juce::Point<float> newPos);
 
-    /** Overload convenienza con coordinate int. */
     inline void setCurrentPageTopLeftPosition (juce::Point<int> newPos)
     {
         setCurrentPageTopLeftPosition (newPos.toFloat());
     }
 
-    /** Ritorna il bounding rect della pagina corrente in coordinate widget. */
+    /** Bounds logici della pagina nel widget, con rotazione e zoom applicati. */
     [[nodiscard]] juce::Rectangle<float> getCurrentPageBounds() const;
 
-    /** Esporta il documento corrente come file PDF.
-     *  @param withName          Nome del file senza estensione.
-     *  @param folderPath        Percorso cartella di destinazione.
-     */
-    void exportCurrentDocument (const juce::String& withName, const juce::String& folderPath) const;
+    //==============================================================================
+    // I/O
 
-    /** Carica un documento PDF da buffer in memoria. */
+    void exportCurrentDocument (const juce::String& withName,
+                                const juce::String& folderPath) const;
+
     void loadDocumentFromMemoryBlock (const void* data, int sizeInBytes);
 
-    /** Serializza il documento corrente in un MemoryBlock. */
+    /** Su failure destData resta invariato. */
     void getMemoryBlockFromDocument (juce::MemoryBlock& destData);
 
-    //==============================================================================
-    // NUOVA API
-
-    /** Collega un documento esterno gia' caricato.
-     *  Il viewer NON prende ownership — il documento deve rimanere in vita finche'
-     *  il viewer e' in uso o finche' non viene chiamata loadDocument()/loadDocumentFromMemoryBlock().
+    /** Collega un documento esterno aperto con almeno una pagina.
+     *  Il viewer non prende ownership: doc deve restare vivo e non mutare mentre e' collegato.
      */
     void setDocument (PdfDocument& doc);
 
     //==============================================================================
-    // EVENTI — doppia API Listener + std::function
+    // EVENTI
 
-    void addListener    (Listener* l);
+    void addListener (Listener* l);
     void removeListener (Listener* l);
 
-    std::function<void (int)> onPageChanged;    ///< Chiamata con il nuovo numero pagina (1-based)
-    std::function<void()>     onDocumentLoaded; ///< Chiamata quando il documento e' caricato
-    std::function<void()>     onDocumentClosed; ///< Chiamata quando il documento viene chiuso
+    std::function<void (int)> onPageChanged;
+    std::function<void()>     onDocumentLoaded;
 
     //==============================================================================
-    void paint   (juce::Graphics& g) override;
-    void resized ()                  override;
+    void paint (juce::Graphics& g) override;
+    void resized() override;
 
 private:
-    //==============================================================================
-    /** Accesso al LookAndFeel con fallback automatico al default Ayra. */
     LookAndFeelMethods& getLAF();
 
-    PdfDocument  ownedDocument;                 ///< Documento posseduto dal widget (loadDocument/loadFromMemory)
-    PdfDocument* currentDocument { nullptr };   ///< Puntatore al documento attivo (owned o esterno)
+    [[nodiscard]] PdfPage getCurrentPageInfo() const;
 
-    float                     currentZoom { 1.0f };
-    juce::Point<float>        topLeft     {};
-    int                       currentPage { 1 };
+    void activateDocument (PdfDocument& doc);
+    void invalidatePageCache();
+    void notifyDocumentLoaded();
+    void notifyPageChanged();
+
+    std::unique_ptr<PdfDocument> ownedDocument;
+    PdfDocument* currentDocument { nullptr };
+
+    juce::Image cachedPageImage;
+    bool pageCacheReady { false };
+
+    float              currentZoom { 1.0f };
+    juce::Point<float> topLeft {};
+    int                currentPage { 0 };
 
     juce::ListenerList<Listener> listeners;
 
