@@ -83,8 +83,9 @@ template <typename NativeRectangle>
 
         utf8 = [source UTF8String];
     }
-    @catch (NSException*)
+    @catch (NSException* exception)
     {
+        juce::ignoreUnused (exception);
         return false;
     }
 
@@ -194,8 +195,9 @@ struct MacPdfRenderer::Impl
                 newTextDocument = nil;
             }
         }
-        @catch (NSException*)
+        @catch (NSException* exception)
         {
+            juce::ignoreUnused (exception);
             if (newTextDocument != nil)
                 [newTextDocument release];
 
@@ -581,6 +583,7 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
             return {};
 
         juce::Array<PdfSearchResult> results;
+        int examinedMatches = 0;
 
         @autoreleasepool
         {
@@ -590,8 +593,9 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
             {
                 needle = [NSString stringWithUTF8String:query.toRawUTF8()];
             }
-            @catch (NSException*)
+            @catch (NSException* exception)
             {
+                juce::ignoreUnused (exception);
                 return {};
             }
 
@@ -611,33 +615,38 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
                     page = [impl->textDocument pageAtIndex:static_cast<NSUInteger> (currentPage)];
                     pageText = [page string];
                 }
-                @catch (NSException*)
+                @catch (NSException* exception)
                 {
+                    juce::ignoreUnused (exception);
                     return {};
                 }
 
-                if (page == nil || pageText == nil || [pageText length] == 0)
+                if (page == nil || pageText == nil)
                     continue;
 
                 NSUInteger pageUtf8Bytes = 0;
+                NSUInteger textLength = 0;
 
                 @try
                 {
                     pageUtf8Bytes = [pageText lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+                    textLength = [pageText length];
                 }
-                @catch (NSException*)
+                @catch (NSException* exception)
                 {
+                    juce::ignoreUnused (exception);
                     return {};
                 }
 
                 if (pageUtf8Bytes > detail::maxTextUtf8BytesPerPage)
                     return {};
 
-                const NSUInteger textLength = [pageText length];
+                if (textLength == 0)
+                    continue;
+
                 NSRange remaining = NSMakeRange (0, textLength);
 
-                while (remaining.length > 0
-                       && results.size() < detail::maxSearchResults)
+                while (remaining.length > 0)
                 {
                     NSRange match = NSMakeRange (NSNotFound, 0);
 
@@ -647,13 +656,17 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
                                                options:NSCaseInsensitiveSearch
                                                  range:remaining];
                     }
-                    @catch (NSException*)
+                    @catch (NSException* exception)
                     {
+                        juce::ignoreUnused (exception);
                         return {};
                     }
 
                     if (match.location == NSNotFound || match.length == 0)
                         break;
+
+                    if (++examinedMatches > detail::maxSearchResults)
+                        return {};
 
                     PDFSelection* selection = nil;
                     juce::Rectangle<float> bounds;
@@ -670,8 +683,9 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
                             matchedText = [pageText substringWithRange:match];
                         }
                     }
-                    @catch (NSException*)
+                    @catch (NSException* exception)
                     {
+                        juce::ignoreUnused (exception);
                         return {};
                     }
 
@@ -695,8 +709,6 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
                     remaining = NSMakeRange (next, textLength - next);
                 }
 
-                if (results.size() >= detail::maxSearchResults)
-                    break;
             }
         }
 
@@ -727,8 +739,9 @@ juce::String MacPdfRenderer::extractText (int pageIndex) noexcept
                 PDFPage* page = [impl->textDocument pageAtIndex:static_cast<NSUInteger> (pageIndex)];
                 pageText = [page string];
             }
-            @catch (NSException*)
+            @catch (NSException* exception)
             {
+                juce::ignoreUnused (exception);
                 return {};
             }
 
