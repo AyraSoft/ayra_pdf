@@ -36,7 +36,8 @@ constexpr float minVisibleFraction = 0.1f;
 
 } // namespace
 
-struct PdfViewComponent::RenderState final : private juce::AsyncUpdater
+struct PdfViewComponent::RenderState final : private juce::AsyncUpdater,
+                                             public std::enable_shared_from_this<RenderState>
 {
     std::atomic<std::uint64_t> renderGeneration { 0 };
     std::atomic<std::uint64_t> searchGeneration { 0 };
@@ -144,6 +145,10 @@ private:
 
     void handleAsyncUpdate() override
     {
+        // Listener/callback publication can destroy the owning widget and release its
+        // shared_ptr<RenderState>. Keep this state alive until the callback fully returns.
+        const auto keepAlive = shared_from_this();
+
         RenderCompletion render;
         SearchCompletion search;
 
