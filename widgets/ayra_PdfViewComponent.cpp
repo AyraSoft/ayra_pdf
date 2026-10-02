@@ -355,12 +355,12 @@ bool PdfViewComponent::thereIsADocumentLoaded() const
 
 int PdfViewComponent::getTotPagesNum() const
 {
-    return thereIsADocumentLoaded() ? currentPageCount : 0;
+    return thereIsADocumentLoaded() ? currentPageCount : -1;
 }
 
 int PdfViewComponent::getCurrentPageOnScreen() const
 {
-    return thereIsADocumentLoaded() ? currentPage : 0;
+    return thereIsADocumentLoaded() ? currentPage : -1;
 }
 
 void PdfViewComponent::setPageNumber (int pageNumber)
@@ -404,7 +404,7 @@ float PdfViewComponent::getDocumentHeight() const
 
 float PdfViewComponent::getCurrentPageZoom() const
 {
-    return currentZoom;
+    return thereIsADocumentLoaded() ? currentZoom : -1.0f;
 }
 
 void PdfViewComponent::setCurrentPageZoom (float zoom, juce::Point<float> handlePoint)
@@ -434,12 +434,12 @@ void PdfViewComponent::setCurrentPageZoom (float zoom, juce::Point<float> handle
 
 juce::Point<float> PdfViewComponent::getCurrentPageTopLeftPosition() const
 {
-    return topLeft;
+    return thereIsADocumentLoaded() ? topLeft : juce::Point<float> {};
 }
 
 void PdfViewComponent::setCurrentPageTopLeftPosition (juce::Point<float> newPos)
 {
-    if (!isFinitePoint (newPos))
+    if (!thereIsADocumentLoaded() || !isFinitePoint (newPos))
         return;
 
     topLeft = newPos;

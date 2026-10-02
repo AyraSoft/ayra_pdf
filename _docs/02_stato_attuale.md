@@ -94,7 +94,9 @@ Il contratto corretto e':
 - nessun fallback platform-specific v1.
 
 L'alias preserva il call-site e il modo di istanziare il widget senza riattivare il vecchio
-percorso: `PDFComponent` e `PdfViewComponent` sono lo stesso tipo.
+percorso: `PDFComponent` e `PdfViewComponent` sono lo stesso tipo. Sono preservati anche i
+sentinel pubblici usati dai consumer: senza documento, page count, current page e zoom
+restituiscono `-1`.
 
 L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 `PDFKit.PDFView`, non e' piu' codice di produzione perche' l'intero legacy e' stato rimosso.

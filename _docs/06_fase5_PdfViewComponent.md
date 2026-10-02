@@ -85,6 +85,10 @@ Il precedente percorso di implementazione `PDFComponent` e' stato rimosso. Il no
 `PDFComponent` resta come alias di `PdfViewComponent` per i consumer esistenti; non esiste
 un adapter o un secondo widget.
 
+Il contratto observable gia' usato dai consumer viene preservato anche senza documento:
+`getTotPagesNum()`, `getCurrentPageOnScreen()` e `getCurrentPageZoom()` restituiscono `-1`;
+la posizione top-left resta vuota e il relativo setter non modifica stato.
+
 ## Verification esterna
 
 - navigazione;

@@ -84,9 +84,11 @@ public:
     void loadDocument (const juce::String& filePath);
 
     [[nodiscard]] bool thereIsADocumentLoaded() const;
+
+    /** Numero pagine; -1 quando non esiste un documento attivo. */
     [[nodiscard]] int getTotPagesNum() const;
 
-    /** Pagina visualizzata 1-based; 0 quando non esiste una pagina attiva. */
+    /** Pagina visualizzata 1-based; -1 quando non esiste una pagina attiva. */
     [[nodiscard]] int getCurrentPageOnScreen() const;
 
     /** Naviga a una pagina utente 1-based. Valori fuori range non modificano lo stato. */
@@ -99,6 +101,7 @@ public:
     //==============================================================================
     // VIEWPORT
 
+    /** Zoom corrente; -1 quando non esiste un documento attivo. */
     [[nodiscard]] float getCurrentPageZoom() const;
 
     void setCurrentPageZoom (float zoom, juce::Point<float> handlePoint);
