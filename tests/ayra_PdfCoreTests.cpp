@@ -4,6 +4,8 @@ namespace ayra::tests
 namespace
 {
 
+constexpr int fixtureRotations[] { 0, 90, 180, 270 };
+
 void appendPdfAscii (juce::MemoryOutputStream& output, const juce::String& text)
 {
     (void) output.writeText (text, false, false, nullptr);
@@ -30,8 +32,6 @@ juce::MemoryBlock makePdfFixture()
                     "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>\n"
                     "endobj\n");
 
-    constexpr int rotations[] { 0, 90, 180, 270 };
-
     for (int page = 0; page < 4; ++page)
     {
         const int objectNumber = 3 + page;
@@ -39,13 +39,14 @@ juce::MemoryBlock makePdfFixture()
 
         appendPdfAscii (
             output,
-            "<< /Type /Page /Parent 2 0 R "
-            "/MediaBox [10 20 410 620] "
-            "/CropBox [30 50 330 550] "
-            "/Rotate " + juce::String (rotations[page]) + " "
-            "/Resources << /Font << /F1 8 0 R >> >> "
-            "/Contents 7 0 R >>\n"
-            "endobj\n");
+            juce::String ("<< /Type /Page /Parent 2 0 R "
+                          "/MediaBox [10 20 410 620] "
+                          "/CropBox [30 50 330 550] "
+                          "/Rotate ")
+                + juce::String (fixtureRotations[page])
+                + " /Resources << /Font << /F1 8 0 R >> >> "
+                  "/Contents 7 0 R >>\n"
+                  "endobj\n");
     }
 
     const juce::String content (
@@ -56,9 +57,11 @@ juce::MemoryBlock makePdfFixture()
         "ET\n");
 
     beginObject (7);
-    appendPdfAscii (output,
-                    "<< /Length " + juce::String (content.getNumBytesAsUTF8()) + " >>\n"
-                    "stream\n");
+    appendPdfAscii (
+        output,
+        juce::String ("<< /Length ")
+            + juce::String (static_cast<juce::int64> (content.getNumBytesAsUTF8()))
+            + " >>\nstream\n");
     appendPdfAscii (output, content);
     appendPdfAscii (output, "endstream\nendobj\n");
 
@@ -81,12 +84,13 @@ juce::MemoryBlock makePdfFixture()
                 + " 00000 n \n");
     }
 
-    appendPdfAscii (output,
-                    "trailer\n"
-                    "<< /Size 9 /Root 1 0 R >>\n"
-                    "startxref\n"
-                    + juce::String (xrefOffset)
-                    + "\n%%EOF\n");
+    appendPdfAscii (
+        output,
+        juce::String ("trailer\n"
+                      "<< /Size 9 /Root 1 0 R >>\n"
+                      "startxref\n")
+            + juce::String (xrefOffset)
+            + "\n%%EOF\n");
 
     return output.getMemoryBlock();
 }
@@ -167,7 +171,7 @@ public:
             const auto info = document.getPage (pageIndex);
             expect (info.isValid());
             expectEquals (info.index, pageIndex);
-            expectEquals (info.rotation, rotations[pageIndex]);
+            expectEquals (info.rotation, fixtureRotations[pageIndex]);
             expect (rectangleApproximatelyEquals (info.bounds,
                                                    { 30.0f, 50.0f, 300.0f, 500.0f }));
 
