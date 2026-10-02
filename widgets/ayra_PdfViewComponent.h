@@ -149,14 +149,21 @@ private:
 
     void activateDocument (PdfDocument& doc);
     void invalidatePageCache();
+    void requestPageRender();
+    void stopRenderJobs();
+    void publishPageRender (std::uint64_t generation, PdfPage page, juce::Image image);
     void notifyDocumentLoaded();
     void notifyPageChanged();
 
     std::unique_ptr<PdfDocument> ownedDocument;
     PdfDocument* currentDocument { nullptr };
 
+    juce::ThreadPool renderPool { 1 };
+    std::uint64_t cacheGeneration { 0 };
+
     juce::Image cachedPageImage;
-    bool pageCacheReady { false };
+    PdfPage cachedPageInfo;
+    int currentPageCount { 0 };
 
     float              currentZoom { 1.0f };
     juce::Point<float> topLeft {};

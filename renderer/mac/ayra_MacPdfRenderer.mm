@@ -139,6 +139,8 @@ private:
 
 struct MacPdfRenderer::Impl
 {
+    mutable juce::CriticalSection apiLock;
+
     CGPDFDocumentRef document { nullptr };        ///< Documento CoreGraphics corrente
     CGDataProviderRef provider { nullptr };       ///< Provider mantenuto vivo quanto il documento
     std::unique_ptr<juce::MemoryBlock> pdfData;   ///< Backing storage per load-from-memory
@@ -231,6 +233,7 @@ MacPdfRenderer::~MacPdfRenderer()
 
 bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (!file.existsAsFile())
         return false;
 
@@ -276,6 +279,8 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
         auto newPdfData = std::make_unique<juce::MemoryBlock>();
         newPdfData->replaceAll (data, sizeBytes);
 
+        const juce::ScopedLock lock (impl->apiLock);
+
         CGDataProviderRef provider = CGDataProviderCreateWithData (nullptr,
                                                                    newPdfData->getData(),
                                                                    newPdfData->getSize(),
@@ -308,6 +313,7 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
 bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (impl->document == nullptr || impl->provider == nullptr)
         return false;
 
@@ -330,6 +336,7 @@ bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
 
 bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (impl->document == nullptr || impl->provider == nullptr)
         return false;
 
@@ -354,6 +361,7 @@ bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 
 void MacPdfRenderer::close() noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     impl->resetTextDocument();
 
     if (impl->document != nullptr)
@@ -373,11 +381,13 @@ void MacPdfRenderer::close() noexcept
 
 bool MacPdfRenderer::isLoaded() const noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     return impl->document != nullptr;
 }
 
 int MacPdfRenderer::getPageCount() const noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (impl->document == nullptr)
         return 0;
 
@@ -390,6 +400,7 @@ int MacPdfRenderer::getPageCount() const noexcept
 
 PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (impl->document == nullptr || pageIndex < 0)
         return {};
 
@@ -428,6 +439,7 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
 juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (!std::isfinite (scale) || scale <= 0.0f)
         return {};
 
@@ -548,6 +560,7 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
 
 juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query, int pageIndex) noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (impl->document == nullptr || query.isEmpty() || pageIndex < -1)
         return {};
 
@@ -706,6 +719,7 @@ juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query
 
 juce::String MacPdfRenderer::extractText (int pageIndex) noexcept
 {
+    const juce::ScopedLock lock (impl->apiLock);
     if (impl->document == nullptr || pageIndex < 0 || pageIndex >= getPageCount())
         return {};
 

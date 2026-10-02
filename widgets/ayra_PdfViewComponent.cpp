@@ -123,7 +123,11 @@ void PdfViewComponent::LookAndFeelMethods::drawPdfViewPageShadow (juce::Graphics
 //==============================================================================
 
 PdfViewComponent::PdfViewComponent() = default;
-PdfViewComponent::~PdfViewComponent() = default;
+
+PdfViewComponent::~PdfViewComponent()
+{
+    stopRenderJobs();
+}
 
 void PdfViewComponent::loadDocument (const juce::String& filePath)
 {
@@ -132,6 +136,7 @@ void PdfViewComponent::loadDocument (const juce::String& filePath)
     if (!candidate->open (juce::File (filePath)) || candidate->getPageCount() <= 0)
         return;
 
+    stopRenderJobs();
     ownedDocument = std::move (candidate);
     activateDocument (*ownedDocument);
 }
@@ -139,13 +144,14 @@ void PdfViewComponent::loadDocument (const juce::String& filePath)
 bool PdfViewComponent::thereIsADocumentLoaded() const
 {
     return currentDocument != nullptr
-        && currentPage > 0
-        && currentDocument->isOpen();
+        && currentPageCount > 0
+        && currentPage >= 1
+        && currentPage <= currentPageCount;
 }
 
 int PdfViewComponent::getTotPagesNum() const
 {
-    return thereIsADocumentLoaded() ? currentDocument->getPageCount() : 0;
+    return thereIsADocumentLoaded() ? currentPageCount : 0;
 }
 
 int PdfViewComponent::getCurrentPageOnScreen() const
@@ -158,14 +164,14 @@ void PdfViewComponent::setPageNumber (int pageNumber)
     if (!thereIsADocumentLoaded())
         return;
 
-    const int totalPages = currentDocument->getPageCount();
-
-    if (pageNumber < 1 || pageNumber > totalPages || pageNumber == currentPage)
+    if (pageNumber < 1 || pageNumber > currentPageCount || pageNumber == currentPage)
         return;
 
     currentPage = pageNumber;
     topLeft = {};
+    cachedPageInfo = {};
     invalidatePageCache();
+    requestPageRender();
     notifyPageChanged();
 }
 
@@ -259,6 +265,7 @@ void PdfViewComponent::loadDocumentFromMemoryBlock (const void* data, int sizeIn
         return;
     }
 
+    stopRenderJobs();
     ownedDocument = std::move (candidate);
     activateDocument (*ownedDocument);
 }
@@ -277,6 +284,7 @@ void PdfViewComponent::setDocument (PdfDocument& doc)
     if (!doc.isOpen() || doc.getPageCount() <= 0)
         return;
 
+    stopRenderJobs();
     ownedDocument.reset();
     activateDocument (doc);
 }
@@ -305,19 +313,10 @@ void PdfViewComponent::paint (juce::Graphics& g)
     const auto pageBounds = getCurrentPageBounds();
 
     if (pageBounds.isEmpty())
-    {
-        laf.drawPdfViewNoDocument (g, getWidth(), getHeight(), *this);
         return;
-    }
 
     laf.drawPdfViewPageShadow (g, pageBounds, *this);
     laf.drawPdfViewPageBackground (g, pageBounds, *this);
-
-    if (!pageCacheReady)
-    {
-        cachedPageImage = currentDocument->renderPage (currentPage - 1, currentZoom);
-        pageCacheReady = true;
-    }
 
     if (cachedPageImage.isValid())
         g.drawImage (cachedPageImage, pageBounds);
@@ -338,26 +337,89 @@ PdfViewComponent::LookAndFeelMethods& PdfViewComponent::getLAF()
 
 PdfPage PdfViewComponent::getCurrentPageInfo() const
 {
-    if (!thereIsADocumentLoaded())
-        return {};
-
-    return currentDocument->getPage (currentPage - 1);
+    return thereIsADocumentLoaded() ? cachedPageInfo : PdfPage {};
 }
 
 void PdfViewComponent::activateDocument (PdfDocument& doc)
 {
     currentDocument = &doc;
-    currentPage = 1;
+    currentPageCount = doc.getPageCount();
+    currentPage = currentPageCount > 0 ? 1 : 0;
     currentZoom = 1.0f;
     topLeft = {};
+    cachedPageInfo = currentPage > 0 ? doc.getPage (0) : PdfPage {};
+
     invalidatePageCache();
+    requestPageRender();
     notifyDocumentLoaded();
 }
 
 void PdfViewComponent::invalidatePageCache()
 {
+    ++cacheGeneration;
+    (void) renderPool.removeAllJobs (true, 0);
+
     cachedPageImage = {};
-    pageCacheReady = false;
+    repaint();
+}
+
+void PdfViewComponent::requestPageRender()
+{
+    if (!thereIsADocumentLoaded())
+        return;
+
+    const auto generation = cacheGeneration;
+    const int pageIndex = currentPage - 1;
+    const float rasterScale = currentZoom;
+    auto* const document = currentDocument;
+    const juce::Component::SafePointer<PdfViewComponent> safeThis (this);
+
+    try
+    {
+        renderPool.addJob ([safeThis, document, generation, pageIndex, rasterScale]
+        {
+            const auto page = document->getPage (pageIndex);
+            auto image = page.isValid() ? document->renderPage (pageIndex, rasterScale)
+                                        : juce::Image {};
+
+            try
+            {
+                (void) juce::MessageManager::callAsync (
+                    [safeThis, generation, page, image = std::move (image)] () mutable
+                    {
+                        if (safeThis != nullptr)
+                            safeThis->publishPageRender (generation, page, std::move (image));
+                    });
+            }
+            catch (const std::bad_alloc&)
+            {
+            }
+        });
+    }
+    catch (const std::bad_alloc&)
+    {
+    }
+}
+
+void PdfViewComponent::stopRenderJobs()
+{
+    ++cacheGeneration;
+    (void) renderPool.removeAllJobs (true, -1);
+    cachedPageImage = {};
+}
+
+void PdfViewComponent::publishPageRender (std::uint64_t generation,
+                                          PdfPage page,
+                                          juce::Image image)
+{
+    if (generation != cacheGeneration
+        || page.index != currentPage - 1)
+    {
+        return;
+    }
+
+    cachedPageInfo = page;
+    cachedPageImage = std::move (image);
     repaint();
 }
 
