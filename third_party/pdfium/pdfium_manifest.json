@@ -1,0 +1,68 @@
+{
+  "provider": "bblanchon/pdfium-binaries",
+  "version": "chromium/7857",
+  "assets": {
+    "win-arm64": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-win-arm64.tgz",
+      "sha256": "12238aba08002328fb8adc7225921771427eee1cf463cca3694beecf41e4d7c5",
+      "runtime_path": "bin/pdfium.dll",
+      "link_path": "lib/pdfium.dll.lib"
+    },
+    "win-x64": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-win-x64.tgz",
+      "sha256": "b904e3898f952984fb744e0c8eb36512b5ee527124796108ed419a5b4da3c6d9",
+      "runtime_path": "bin/pdfium.dll",
+      "link_path": "lib/pdfium.dll.lib"
+    },
+    "win-x86": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-win-x86.tgz",
+      "sha256": "e797f1cecdd703caae97ec22a49089cbc5f48e461decad9fa7b313e89df9a4b8",
+      "runtime_path": "bin/pdfium.dll",
+      "link_path": "lib/pdfium.dll.lib"
+    },
+    "linux-arm": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-linux-arm.tgz",
+      "sha256": "adde5e08ecd466d2730413d86e51a7762d8750087aade9519965751feac654c4",
+      "runtime_path": "lib/libpdfium.so"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-linux-arm64.tgz",
+      "sha256": "0e24373e73c50759136196c0078db8656860c8d03a10b2cb4a2e7b72d8068e35",
+      "runtime_path": "lib/libpdfium.so"
+    },
+    "linux-x64": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-linux-x64.tgz",
+      "sha256": "2ad1fd4237cd491201ac74a72388199b9dcf546c5cb02d8fea700725a1b80541",
+      "runtime_path": "lib/libpdfium.so"
+    },
+    "linux-x86": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-linux-x86.tgz",
+      "sha256": "73dbbf6f950cac845f434241b64877b0e12c90570dffefaca04e472098b0d3a9",
+      "runtime_path": "lib/libpdfium.so"
+    },
+    "android-arm": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-android-arm.tgz",
+      "sha256": "6dfa07dc284c3d7c0eb8a016f97b0f2017aff7102ed372f195d310e532136e57",
+      "runtime_path": "lib/libpdfium.so",
+      "abi": "armeabi-v7a"
+    },
+    "android-arm64": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-android-arm64.tgz",
+      "sha256": "a349cfaeeb6cdfca3cddcdbd21372d957dda6189496e2279a550fd776c37a9e2",
+      "runtime_path": "lib/libpdfium.so",
+      "abi": "arm64-v8a"
+    },
+    "android-x64": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-android-x64.tgz",
+      "sha256": "8851e35f18df5f2869b626205d30ab47c9a6cda25cdf51928eb6b6379db6b7c8",
+      "runtime_path": "lib/libpdfium.so",
+      "abi": "x86_64"
+    },
+    "android-x86": {
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7857/pdfium-android-x86.tgz",
+      "sha256": "09d70d53f99d0191c41826f0db85efa298322c2bcf17a278b6b34c7c183605fe",
+      "runtime_path": "lib/libpdfium.so",
+      "abi": "x86"
+    }
+  }
+}

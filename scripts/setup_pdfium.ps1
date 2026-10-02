@@ -1,276 +1,112 @@
-# ==============================================================================
-# setup_pdfium.ps1 -- Scarica e installa PDFium precompilato per il modulo
-#                     ayra_pdf su Windows
-#
-# Utilizzo (PowerShell):
-#   .\setup_pdfium.ps1                           # x64, versione default
-#   .\setup_pdfium.ps1 -Platform x86             # forza x86
-#   .\setup_pdfium.ps1 -Version "chromium/6721"  # versione specifica
-#   .\setup_pdfium.ps1 -Force                    # ri-scarica se gia' presente
-#
-# Output:
-#   third_party\pdfium\include\       (headers, committabili in git)
-#   third_party\pdfium\win\pdfium.dll (DLL, NON in git)
-#   third_party\pdfium\win\pdfium.lib (import lib, NON in git)
-#
-# Dipendenze: PowerShell 5.1+ (Windows 10 built-in)
-# Fonte:      https://github.com/bblanchon/pdfium-binaries
-# ==============================================================================
+# setup_pdfium.ps1 -- install pinned PDFium for ayra_pdf on Windows.
+# Source of truth: third_party/pdfium/pdfium_manifest.json
 
 [CmdletBinding()]
 param(
-    [ValidateSet('x64', 'x86')]
+    [ValidateSet('x64', 'x86', 'arm64')]
     [string]$Platform = '',
-
-    [string]$Version = '',
-
     [switch]$Force
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ------------------------------------------------------------------------------
-# Percorsi base
-# ------------------------------------------------------------------------------
-$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ModuleDir  = Split-Path -Parent $ScriptDir
-$ThirdParty = Join-Path $ModuleDir 'third_party\pdfium'
-$TempDir    = Join-Path $ModuleDir 'third_party\.pdfium_download_tmp'
-$GithubRepo = 'bblanchon/pdfium-binaries'
-$GithubApi  = "https://api.github.com/repos/$GithubRepo/releases/latest"
-$GithubBase = "https://github.com/$GithubRepo/releases/download"
+function Write-Log { param($Msg) Write-Host "[ayra_pdf] $Msg" -ForegroundColor Cyan }
+function Write-Ok  { param($Msg) Write-Host "  [OK] $Msg" -ForegroundColor Green }
+function Write-Err { param($Msg) Write-Host "  [ERROR] $Msg" -ForegroundColor Red }
 
-# ------------------------------------------------------------------------------
-# Funzioni di logging con colori
-# ------------------------------------------------------------------------------
-function Write-Log   { param($Msg) Write-Host "[ayra_pdf] $Msg" -ForegroundColor Cyan }
-function Write-Ok    { param($Msg) Write-Host "  [OK] $Msg"     -ForegroundColor Green }
-function Write-Warn  { param($Msg) Write-Host "  [WARN] $Msg"   -ForegroundColor Yellow }
-function Write-Err   { param($Msg) Write-Host "  [ERROR] $Msg"  -ForegroundColor Red }
-function Write-Hdr   { param($Msg) Write-Host $Msg              -ForegroundColor White }
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ModuleDir = Split-Path -Parent $ScriptDir
+$PdfiumDir = Join-Path $ModuleDir 'third_party\pdfium'
+$ManifestPath = Join-Path $PdfiumDir 'pdfium_manifest.json'
+$TempDir = Join-Path $ModuleDir 'third_party\.pdfium_download_tmp'
 
-# ------------------------------------------------------------------------------
-# Rileva architettura se non specificata
-# ------------------------------------------------------------------------------
+if (-not (Test-Path $ManifestPath)) { Write-Err "Manifest non trovato: $ManifestPath"; exit 1 }
+$Manifest = Get-Content -Raw -Path $ManifestPath | ConvertFrom-Json
+
 if ([string]::IsNullOrEmpty($Platform))
 {
     $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    if ($arch -eq [System.Runtime.InteropServices.Architecture]::X64)
+    switch ($arch)
     {
-        $Platform = 'x64'
-    }
-    elseif ($arch -eq [System.Runtime.InteropServices.Architecture]::X86)
-    {
-        $Platform = 'x86'
-    }
-    else
-    {
-        Write-Err "Architettura non supportata: $arch"
-        Write-Err "Usa -Platform x64 o -Platform x86"
-        exit 1
+        ([System.Runtime.InteropServices.Architecture]::X64)   { $Platform = 'x64' }
+        ([System.Runtime.InteropServices.Architecture]::X86)   { $Platform = 'x86' }
+        ([System.Runtime.InteropServices.Architecture]::Arm64) { $Platform = 'arm64' }
+        default { Write-Err "Architettura non supportata: $arch"; exit 1 }
     }
 }
 
-# ------------------------------------------------------------------------------
-# Risolvi versione
-# ------------------------------------------------------------------------------
-function Resolve-Version
-{
-    if (-not [string]::IsNullOrEmpty($Version))
-    {
-        # Normalizza: "chromium/6721" -> "chromium%2F6721"
-        return $Version.Replace('/', '%2F')
-    }
+$AssetKey = "win-$Platform"
+$AssetProperty = $Manifest.assets.PSObject.Properties[$AssetKey]
+if ($null -eq $AssetProperty) { Write-Err "Asset non presente nel manifest: $AssetKey"; exit 1 }
+$Asset = $AssetProperty.Value
 
-    Write-Log "Query GitHub API per versione piu' recente..."
-    try
-    {
-        $response = Invoke-RestMethod -Uri $GithubApi -UseBasicParsing
-        $rawTag   = $response.tag_name
-        if ([string]::IsNullOrEmpty($rawTag)) { throw "tag vuoto" }
-        return $rawTag.Replace('/', '%2F')
-    }
-    catch
-    {
-        Write-Warn "GitHub API non raggiungibile -- uso fallback chromium/6721"
-        return 'chromium%2F6721'
-    }
-}
+$Tar = Get-Command tar.exe -ErrorAction SilentlyContinue
+if ($null -eq $Tar) { Write-Err 'tar.exe non trovato; richiesto per gli archivi .tgz'; exit 1 }
 
-$VersionEncoded = Resolve-Version
-$VersionDisplay = $VersionEncoded.Replace('%2F', '/')
+$ArchiveName = Split-Path -Leaf ([string]$Asset.url)
+$ArchivePath = Join-Path $TempDir $ArchiveName
+$ExtractDir = Join-Path $TempDir "ext_$AssetKey"
+$OutDir = Join-Path (Join-Path $PdfiumDir 'win') $Platform
+$OutDll = Join-Path $OutDir 'pdfium.dll'
+$OutLib = Join-Path $OutDir 'pdfium.dll.lib'
+$IncludeDest = Join-Path $PdfiumDir 'include'
 
-# ------------------------------------------------------------------------------
-# Costruisci nomi archivio per Windows
-# pdfium-win-x64.zip contiene pdfium.dll + pdfium.lib + include/
-# ------------------------------------------------------------------------------
-$ArchiveName = "pdfium-win-$Platform.zip"
-$DownloadUrl = "$GithubBase/$VersionEncoded/$ArchiveName"
+Write-Log "PDFium $($Manifest.version) / $AssetKey"
 
-$OutDir    = Join-Path $ThirdParty 'win'
-$OutDll    = Join-Path $OutDir 'pdfium.dll'
-$OutLib    = Join-Path $OutDir 'pdfium.lib'
-$IncDest   = Join-Path $ThirdParty 'include'
-
-# ------------------------------------------------------------------------------
-# Banner
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Hdr "======================================================"
-Write-Hdr "  PDFium Setup -- ayra_pdf (Windows)"
-Write-Hdr "  Versione:    $VersionDisplay"
-Write-Hdr "  Platform:    $Platform"
-Write-Hdr "  Module dir:  $ModuleDir"
-Write-Hdr "======================================================"
-Write-Host ""
-
-# ------------------------------------------------------------------------------
-# Skip se gia' presente (e non --Force)
-# ------------------------------------------------------------------------------
 if ((Test-Path $OutDll) -and (Test-Path $OutLib) -and (-not $Force))
 {
-    Write-Ok "PDFium gia' installato: $OutDir"
-    Write-Ok "Usa -Force per ri-scaricare"
+    Write-Ok "Gia' installato: $OutDir"
     exit 0
 }
 
-# ------------------------------------------------------------------------------
-# Crea directory tmp e out
-# ------------------------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
-New-Item -ItemType Directory -Force -Path $OutDir  | Out-Null
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-# ------------------------------------------------------------------------------
-# Download
-# ------------------------------------------------------------------------------
-$ZipPath = Join-Path $TempDir $ArchiveName
-
-if ((Test-Path $ZipPath) -and (-not $Force))
+Write-Log "Download: $ArchiveName"
+try
 {
-    Write-Ok "Archivio gia' in cache: $ArchiveName"
+    $client = New-Object System.Net.WebClient
+    $client.DownloadFile([string]$Asset.url, $ArchivePath)
 }
-else
+catch
 {
-    Write-Log "Download: $ArchiveName"
-    try
-    {
-        # Usa WebClient per progress in console; Invoke-WebRequest va bene su PS7
-        $wc = New-Object System.Net.WebClient
-        $wc.DownloadFile($DownloadUrl, $ZipPath)
-        Write-Ok "Scaricato: $ArchiveName"
-    }
-    catch
-    {
-        Write-Err "Download fallito: $DownloadUrl"
-        Write-Err $_.Exception.Message
-        exit 1
-    }
-}
-
-# ------------------------------------------------------------------------------
-# Estrai archivio
-# ------------------------------------------------------------------------------
-$ExtDir = Join-Path $TempDir "ext_win_$Platform"
-if (Test-Path $ExtDir) { Remove-Item $ExtDir -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $ExtDir | Out-Null
-
-Write-Log "Estrazione: $ArchiveName..."
-Expand-Archive -Path $ZipPath -DestinationPath $ExtDir -Force
-Write-Ok "Estratto in: $ExtDir"
-
-# ------------------------------------------------------------------------------
-# Copia DLL e import lib
-# Struttura attesa nell'archivio: bin/pdfium.dll, lib/pdfium.lib, include/*.h
-# ------------------------------------------------------------------------------
-$ExtDll = Get-ChildItem -Path $ExtDir -Recurse -Filter 'pdfium.dll' | Select-Object -First 1
-$ExtLib = Get-ChildItem -Path $ExtDir -Recurse -Filter 'pdfium.lib' | Select-Object -First 1
-
-if ($null -eq $ExtDll)
-{
-    Write-Err "pdfium.dll non trovata nell'archivio estratto"
-    exit 1
-}
-if ($null -eq $ExtLib)
-{
-    Write-Err "pdfium.lib non trovata nell'archivio estratto"
+    Write-Err "Download fallito: $($Asset.url)"
+    Write-Err $_.Exception.Message
     exit 1
 }
 
-Copy-Item $ExtDll.FullName $OutDll -Force
-Copy-Item $ExtLib.FullName $OutLib -Force
-Write-Ok "pdfium.dll -> $OutDll"
-Write-Ok "pdfium.lib -> $OutLib"
-
-# ------------------------------------------------------------------------------
-# Copia headers
-# ------------------------------------------------------------------------------
-$HeaderRoot = Get-ChildItem -Path $ExtDir -Recurse -Filter 'fpdf_view.h' |
-              Select-Object -First 1 |
-              ForEach-Object { $_.DirectoryName }
-
-if ([string]::IsNullOrEmpty($HeaderRoot))
+$ActualHash = (Get-FileHash -Path $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$ExpectedHash = ([string]$Asset.sha256).ToLowerInvariant()
+if ($ActualHash -ne $ExpectedHash)
 {
-    Write-Warn "fpdf_view.h non trovato -- cerco qualsiasi .h"
-    $HeaderRoot = Get-ChildItem -Path $ExtDir -Recurse -Filter '*.h' |
-                  Select-Object -First 1 |
-                  ForEach-Object { $_.DirectoryName }
+    Remove-Item $ArchivePath -Force -ErrorAction SilentlyContinue
+    Write-Err "SHA256 non valido per $ArchiveName"
+    Write-Err "Atteso: $ExpectedHash"
+    Write-Err "Letto:  $ActualHash"
+    exit 1
 }
+Write-Ok 'SHA256 verificato'
 
-if (-not [string]::IsNullOrEmpty($HeaderRoot))
-{
-    New-Item -ItemType Directory -Force -Path $IncDest | Out-Null
-    Copy-Item -Path "$HeaderRoot\*" -Destination $IncDest -Recurse -Force
-    $hCount = (Get-ChildItem $IncDest -Recurse -Filter '*.h').Count
-    Write-Ok "Header installati ($hCount file): $IncDest"
-}
-else
-{
-    Write-Warn "Nessun header trovato nell'archivio"
-}
+if (Test-Path $ExtractDir) { Remove-Item $ExtractDir -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $ExtractDir | Out-Null
+& $Tar.Source -xzf $ArchivePath -C $ExtractDir
+if ($LASTEXITCODE -ne 0) { Write-Err "Estrazione fallita: $ArchiveName"; exit 1 }
 
-# ------------------------------------------------------------------------------
-# Pulizia .zip
-# ------------------------------------------------------------------------------
-Remove-Item $ZipPath -Force
-Write-Ok "Archivio .zip rimosso"
+$SourceDll = Join-Path $ExtractDir ([string]$Asset.runtime_path)
+$SourceLib = Join-Path $ExtractDir ([string]$Asset.link_path)
+$SourceInclude = Join-Path $ExtractDir 'include'
+if (-not (Test-Path $SourceDll)) { Write-Err "DLL non trovata: $SourceDll"; exit 1 }
+if (-not (Test-Path $SourceLib)) { Write-Err "Import library non trovata: $SourceLib"; exit 1 }
+if (-not (Test-Path (Join-Path $SourceInclude 'fpdfview.h'))) { Write-Err "Header non trovati: $SourceInclude"; exit 1 }
 
-# ------------------------------------------------------------------------------
-# Sommario
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Hdr "------------------------------------------------------"
-Write-Hdr "  Sommario installazione"
-Write-Hdr "------------------------------------------------------"
+Copy-Item $SourceDll $OutDll -Force
+Copy-Item $SourceLib $OutLib -Force
+New-Item -ItemType Directory -Force -Path $IncludeDest | Out-Null
+Copy-Item -Path (Join-Path $SourceInclude '*') -Destination $IncludeDest -Recurse -Force
+Remove-Item $ArchivePath -Force
 
-if (Test-Path $OutDll)
-{
-    $dllSize = (Get-Item $OutDll).Length / 1MB
-    Write-Ok ("DLL:     $OutDll ({0:N1} MB)" -f $dllSize)
-}
-if (Test-Path $OutLib)
-{
-    $libSize = (Get-Item $OutLib).Length / 1MB
-    Write-Ok ("Import:  $OutLib ({0:N1} MB)" -f $libSize)
-}
-if (Test-Path $IncDest)
-{
-    $hTotal = (Get-ChildItem $IncDest -Recurse -Filter '*.h').Count
-    Write-Ok "Headers: $IncDest ($hTotal file)"
-}
-
-Write-Host ""
-Write-Hdr "======================================================"
-Write-Ok "Setup PDFium completato."
-Write-Hdr "======================================================"
-Write-Host ""
-Write-Log "Prossimi passi:"
-Write-Log "  1. Aggiungi al .gitignore:"
-Write-Log "       third_party/pdfium/win/"
-Write-Log "       third_party/.pdfium_download_tmp/"
-Write-Log "  2. Committate third_party/pdfium/include/ (headers stabili)"
-Write-Log "  3. Projucer Header Search Paths: `$(MODULE_DIR)\third_party\pdfium\include"
-Write-Log "  4. Projucer Extra Library Search Paths: `$(MODULE_DIR)\third_party\pdfium\win"
-Write-Log "  5. Projucer Extra Libraries: pdfium"
-Write-Log "  6. Copia pdfium.dll accanto all'eseguibile (o nella system PATH)"
-Write-Host ""
+Write-Ok "Runtime: $OutDll"
+Write-Ok "Import:  $OutLib"
+Write-Ok "Headers: $IncludeDest"
+Write-Log 'Linka pdfium.dll.lib e distribuisci pdfium.dll accanto al binario reale del target.'
