@@ -94,54 +94,7 @@ template <typename NativeRectangle>
     return true;
 }
 
-class ProviderDataSnapshot final
-{
-public:
-    explicit ProviderDataSnapshot (CGDataProviderRef provider) noexcept
-        : data (provider != nullptr ? CGDataProviderCopyData (provider) : nullptr)
-    {
-        if (data == nullptr)
-            return;
 
-        const CFIndex length = CFDataGetLength (data);
-
-        if (length <= 0
-            || static_cast<std::uint64_t> (length) > detail::maxDocumentBytes)
-        {
-            return;
-        }
-
-        const auto* bytePtr = CFDataGetBytePtr (data);
-
-        if (bytePtr == nullptr)
-            return;
-
-        bytes = bytePtr;
-        size = static_cast<size_t> (length);
-    }
-
-    ~ProviderDataSnapshot()
-    {
-        if (data != nullptr)
-            CFRelease (data);
-    }
-
-    [[nodiscard]] bool isValid() const noexcept
-    {
-        return bytes != nullptr && size > 0;
-    }
-
-    [[nodiscard]] const void* getData() const noexcept { return bytes; }
-    [[nodiscard]] size_t getSize() const noexcept { return size; }
-
-private:
-    CFDataRef data { nullptr };
-    const UInt8* bytes { nullptr };
-    size_t size { 0 };
-
-    ProviderDataSnapshot (const ProviderDataSnapshot&) = delete;
-    ProviderDataSnapshot& operator= (const ProviderDataSnapshot&) = delete;
-};
 
 } // namespace
 
