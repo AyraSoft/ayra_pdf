@@ -2,67 +2,70 @@
 
 ## 1. Dipendenze JUCE
 
-### Core / headless
-
-Il modulo dichiara:
-
-```text
-dependencies: juce_graphics
-```
-
-Per una build senza GUI definire:
-
-```text
-AYRA_PDF_HEADLESS=1
-```
-
-In questa configurazione `ayra_pdf` non include widget e non richiede
-`juce_gui_basics` o `juce_gui_extra`.
-
-### GUI
-
-Per usare `PdfViewComponent`, il target consumer deve aggiungere anche
-`juce_gui_basics`. Se manca, il root header emette un errore esplicito.
-
+Il core dipende da `juce_graphics`. Per headless definire `AYRA_PDF_HEADLESS=1`.
+Per `PdfViewComponent` il target consumer deve includere `juce_gui_basics`.
 `juce_gui_extra` non e' richiesto.
 
-## 2. Apple — macOS / iOS
+## 2. Apple
 
-Backend: CoreGraphics + PDFKit, entrambi framework di sistema.
+macOS/iOS usano CoreGraphics + PDFKit di sistema. Nessun PDFium e' richiesto.
 
-Il module metadata dichiara:
-- macOS: `CoreGraphics PDFKit`;
-- iOS: `CoreGraphics PDFKit`.
+## 3. PDFium pinned
 
-Non serve PDFium sui target Apple correnti.
+La source of truth e' `third_party/pdfium/pdfium_manifest.json`.
+Il manifest pinna provider, tag, URL, SHA-256 e path runtime/linker.
+Gli header vendorizzati in `third_party/pdfium/include/` devono appartenere alla stessa versione.
+Un upgrade PDFium deve aggiornare manifest + header nello stesso cambiamento.
 
-## 3. Windows / Linux / Android
+## 4. Windows
 
-Backend: PDFium.
-
-Gli header sono in:
-
-```text
-third_party/pdfium/include/
+```powershell
+.\scripts\setup_pdfium.ps1 -Platform x64
 ```
 
-I binari di piattaforma vengono preparati con:
-- Windows: `scripts/setup_pdfium.ps1`;
-- Linux/Android: `scripts/setup_pdfium.sh`.
+Supportati: `x64`, `x86`, `arm64`.
+Output:
 
-Il backend e' current-only: se PDFium e' dichiarato per il target ma binario/link mancano,
-il build deve fallire; non esiste un backend inert di fallback.
+```text
+third_party/pdfium/win/<arch>/pdfium.dll
+third_party/pdfium/win/<arch>/pdfium.dll.lib
+```
 
-## 4. Contratto runtime
+Linkare `pdfium.dll.lib` e distribuire `pdfium.dll` accanto al binario reale del target.
 
-- Non chiamare load/render/search/save dal thread audio realtime.
-- Un `PdfDocument` condiviso con il widget tramite `std::shared_ptr` non va mutato
-  concorrentemente.
-- Su PDFium tutte le chiamate FPDF sono serializzate internamente process-wide.
-- Su Apple le chiamate di una singola istanza sono serializzate internamente.
+## 5. Linux
 
-## 5. Verification ancora richiesta
+```bash
+./scripts/setup_pdfium.sh --platform linux
+./scripts/setup_pdfium.sh --platform linux --arch arm64
+```
 
-In questo ambiente non vengono eseguiti build o CI. Prima della release eseguire V01:
-macOS, iOS, Windows, Linux e Android, incluse fixture PDF malformate, Unicode, rotazioni,
-HiDPI, gesture e stress di concorrenza PDFium.
+Output: `third_party/pdfium/linux/<arch>/libpdfium.so`.
+La `.so` e' shared: linkarla e renderla disponibile al runtime, tipicamente con RPATH `$ORIGIN`.
+
+## 6. Android
+
+```bash
+./scripts/setup_pdfium.sh --platform android --arch arm64
+./scripts/setup_pdfium.sh --platform android --arch all
+```
+
+Mapping:
+- `arm` -> `armeabi-v7a`;
+- `arm64` -> `arm64-v8a`;
+- `x86` -> `x86`;
+- `x64` -> `x86_64`.
+
+Output: `third_party/pdfium/android/<abi>/libpdfium.so`.
+La `.so` deve essere linkata e inclusa nel package Android per la stessa ABI.
+
+## 7. Runtime contract
+
+- load/render/search/save non sono realtime-safe;
+- un `PdfDocument` condiviso col widget non va mutato concorrentemente dal caller;
+- PDFium serializza tutte le API FPDF process-wide;
+- Apple serializza le API per istanza.
+
+## 8. Verification
+
+Vedere `_docs/08_verification_v01.md`.

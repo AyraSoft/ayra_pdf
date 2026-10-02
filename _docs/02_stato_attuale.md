@@ -164,6 +164,12 @@ Il test genera in memoria una fixture PDF ASCII con:
 Copre geometry pura, visible box, open/render/search/extract, save byte-preserving,
 load transazionale e input invalidi. Non e' stato eseguito in questa sessione.
 
+## PDFium provisioning
+
+Provisioning Windows/Linux/Android ora usa `third_party/pdfium/pdfium_manifest.json` come SSoT: `chromium/7857`, asset dinamici per architettura e SHA-256 ufficiali. Gli installer non usano piu' `latest` e non contengono percorsi PDFium Apple obsoleti.
+
+Runbook: `_docs/08_verification_v01.md`.
+
 ## Completion gate
 
 Il codice e' **implementation-complete staticamente** e V01 ha ora uno smoke test

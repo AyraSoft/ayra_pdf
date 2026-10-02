@@ -120,8 +120,7 @@ concorrentemente durante l'uso.
 
 ## PDFium
 
-Gli header pubblici sono vendorizzati in `third_party/pdfium/include/`. I binari per i target
-PDFium vengono preparati con gli script in `scripts/`.
+Header e binari PDFium sono accoppiati dal manifest pinned `third_party/pdfium/pdfium_manifest.json`. Gli installer in `scripts/` verificano SHA-256 prima dell'estrazione.
 
 PDFium non e' thread-safe: il backend serializza internamente tutte le chiamate FPDF con una
 lock process-wide. Il caller deve comunque rispettare il lifetime dell'oggetto renderer/documento.
@@ -149,4 +148,5 @@ di compatibilita'.
 - `_docs/05_fase4_PdfDocument.md` - facade engine.
 - `_docs/06_fase5_PdfViewComponent.md` - widget.
 - `_docs/07_deployment.md` - deployment.
+- `_docs/08_verification_v01.md` - runbook V01.
 - `_docs/00_storico.md` - provenance storica, non normativa.

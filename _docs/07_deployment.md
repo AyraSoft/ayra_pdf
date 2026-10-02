@@ -1,220 +1,75 @@
 # Deployment — ayra_pdf
 
-**Autore**: Ayra Soft  
-**Data creazione**: 2026-05-26
+**Stato operativo**: vedere `_docs/02_stato_attuale.md`.
 
----
+## Dependency source
 
-## macOS — dylib nel bundle VST3
+I binari PDFium sono shared/dynamic e sono pin-nati in
+`third_party/pdfium/pdfium_manifest.json`. Gli installer verificano SHA-256 prima
+dell'estrazione.
 
-Il backend Apple corrente usa CoreGraphics + PDFKit di sistema e **non richiede** `libpdfium.dylib` a runtime.
-La dylib e' presente in `third_party/pdfium/mac/` ma il build di produzione macOS non la include.
+## macOS / iOS
 
-### Se in futuro si usa PDFium anche su macOS (opzionale)
+Backend CoreGraphics + PDFKit di sistema. Nessun binario PDFium nel bundle Apple.
 
-La dylib (`libpdfium.dylib`, versione chromium/7857, fat binary arm64+x86_64) deve essere
-copiata nel bundle del plugin nel post-build step.
+## Windows
 
-Struttura bundle VST3 richiesta:
+Provisioning:
 
-```
-MyPlugin.vst3/
-└── Contents/
-    ├── Info.plist
-    ├── MacOS/
-    │   ├── MyPlugin           <- binario del plugin
-    │   └── libpdfium.dylib    <- dylib PDFium (stesso livello del binario)
-    └── Resources/
+```powershell
+.\scripts\setup_pdfium.ps1 -Platform x64
 ```
 
-### Flag linker obbligatori
+File:
+- link: `third_party/pdfium/win/x64/pdfium.dll.lib`;
+- runtime: `third_party/pdfium/win/x64/pdfium.dll`.
 
-Nel Projucer (Extra Linker Flags) o in CMake:
-
-```
--Wl,-rpath,@loader_path
-```
-
-Questo dice al dynamic linker di cercare le dylib nella stessa directory del binario
-(`@loader_path` = directory di `MyPlugin`). Senza questo flag, il linker cerca la dylib
-nei path di sistema e il plugin non si carica.
-
-Verifica al termine del build:
-```bash
-otool -L MyPlugin.vst3/Contents/MacOS/MyPlugin | grep pdfium
-# Deve mostrare: @rpath/libpdfium.dylib
-```
-
-### Post-build step Xcode
-
-In Xcode -> Build Phases -> + New Run Script Phase:
-
-```bash
-# Copia libpdfium.dylib nel bundle dopo la build
-PDFIUM_SRC="${PROJECT_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/mac/libpdfium.dylib"
-BUNDLE_MACOS="${CODESIGNING_FOLDER_PATH}/Contents/MacOS"
-cp "$PDFIUM_SRC" "$BUNDLE_MACOS/libpdfium.dylib"
-```
-
-### Post-build step CMake
+La DLL deve essere accanto al **binario effettivo** del target.
 
 ```cmake
 add_custom_command(TARGET MyPlugin POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        "${CMAKE_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/mac/libpdfium.dylib"
-        "$<TARGET_BUNDLE_CONTENT_DIR:MyPlugin>/MacOS/libpdfium.dylib"
-    COMMENT "Copia libpdfium.dylib nel bundle VST3"
-)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/win/x64/pdfium.dll"
+        "$<TARGET_FILE_DIR:MyPlugin>/pdfium.dll")
 ```
 
-### Code signing con dylib
+## Linux
 
-Se il bundle viene firmato con `codesign`, la dylib deve essere firmata per prima:
+Provisioning:
 
 ```bash
-codesign --force --verify --timestamp \
-    --sign "Developer ID Application: Ayra Soft" \
-    MyPlugin.vst3/Contents/MacOS/libpdfium.dylib
-
-codesign --force --verify --timestamp \
-    --sign "Developer ID Application: Ayra Soft" \
-    MyPlugin.vst3
+./scripts/setup_pdfium.sh --platform linux --arch x64
 ```
 
----
+Runtime: `third_party/pdfium/linux/x64/libpdfium.so`.
 
-## Windows — DLL accanto al VST3
-
-`pdfium.dll` deve essere disponibile a runtime nella stessa cartella del `.vst3`
-o in una directory nel PATH di sistema.
-
-Struttura consigliata:
-
-```
-C:\Program Files\VSTPlugins\
-├── MyPlugin.vst3
-└── pdfium.dll          <- stesso livello del VST3
-```
-
-### Post-build step CMake Windows
+Se la `.so` viene copiata accanto al binario reale, usare RPATH `$ORIGIN`.
 
 ```cmake
-if(WIN32)
-    add_custom_command(TARGET MyPlugin POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            "${CMAKE_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/win/pdfium.dll"
-            "$<TARGET_FILE_DIR:MyPlugin>/pdfium.dll"
-        COMMENT "Copia pdfium.dll nella directory del plugin"
-    )
-endif()
+set_target_properties(MyPlugin PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN")
 ```
 
-### Installer NSIS / WiX
+## Android
 
-L'installer deve includere `pdfium.dll` come componente e installarlo nella stessa directory
-del plugin. Aggiungere al manifesto NSIS:
+Provisioning:
 
-```nsis
-File "third_party\pdfium\win\pdfium.dll"
+```bash
+./scripts/setup_pdfium.sh --platform android --arch all
 ```
 
----
+Output:
+- `android/armeabi-v7a/libpdfium.so`;
+- `android/arm64-v8a/libpdfium.so`;
+- `android/x86/libpdfium.so`;
+- `android/x86_64/libpdfium.so`.
 
-## Linux — RPATH
+Le `.so` devono essere incluse nel package sotto la ABI corrispondente e linkate
+dal target nativo della stessa ABI.
 
-Su Linux, il plugin `.so` deve trovare `libpdfium.so` a runtime. La soluzione piu' robusta
-e' specificare `$ORIGIN` come RPATH, che dice al dynamic linker di cercare nella stessa
-directory del file caricante.
+## Release gate
 
-### CMake
-
-```cmake
-if(UNIX AND NOT APPLE)
-    set_target_properties(MyPlugin PROPERTIES
-        INSTALL_RPATH "$ORIGIN"
-        BUILD_WITH_INSTALL_RPATH TRUE
-    )
-    # Flag aggiuntivo per assicurarsi che il linker accetti $ORIGIN
-    target_link_options(MyPlugin PRIVATE "-Wl,-rpath,$ORIGIN")
-endif()
-```
-
-### Projucer — Extra Linker Flags
-
-```
--Wl,-rpath,$ORIGIN
-```
-
-Nota: in alcune shell `$` deve essere escapato come `$$ORIGIN` in Makefile, ma non in CMake.
-
-### Distribuzione
-
-Il pacchetto di installazione deve includere `libpdfium.so` nella stessa directory del
-file `.so` del plugin. Esempio con tar.gz:
-
-```
-MyPlugin/
-├── MyPlugin.so
-└── libpdfium.so
-```
-
----
-
-## iOS — backend corrente
-
-Il backend corrente iOS usa **CoreGraphics + PDFKit**, entrambi framework di sistema dichiarati
-nel metadata JUCE del modulo. Non serve distribuire PDFium ne' una libreria statica aggiuntiva.
-
-L'integrazione iOS usa esclusivamente CoreGraphics + PDFKit: il percorso AppKit precedente e'
-stato rimosso. Build e runtime iOS restano comunque external pending fino a V01.
-
----
-
-## Android — .so nell'APK
-
-PDFium per Android richiede un `.so` per ogni ABI supportata. Le ABI tipiche:
-- `arm64-v8a` — dispositivi ARM64 moderni (priorita' 1)
-- `armeabi-v7a` — dispositivi ARM32 legacy
-- `x86_64` — emulatori AVD
-- `x86` — emulatori AVD legacy
-
-### Struttura in third_party
-
-```
-third_party/pdfium/android/
-├── arm64-v8a/libpdfium.so
-├── armeabi-v7a/libpdfium.so
-├── x86_64/libpdfium.so
-└── x86/libpdfium.so
-```
-
-### CMake Android
-
-```cmake
-if(ANDROID)
-    target_link_libraries(MyPlugin PRIVATE
-        "${CMAKE_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/android/${ANDROID_ABI}/libpdfium.so"
-    )
-    # Includi la .so nell'APK per l'ABI corrente
-    set_property(TARGET MyPlugin APPEND PROPERTY
-        ANDROID_EXTRA_NATIVE_LIBS
-        "${CMAKE_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/android/${ANDROID_ABI}/libpdfium.so"
-    )
-endif()
-```
-
-La variabile `ANDROID_ABI` e' impostata da CMake Android toolchain (`arm64-v8a`, ecc.).
-Android Gradle plugin copiera' automaticamente i `.so` di tutte le ABI nelle posizioni corrette.
-
----
-
-## Riepilogo per piattaforma
-
-| Piattaforma | Formato | Deploy | Note |
-|---|---|---|---|
-| macOS CoreGraphics + PDFKit | system frameworks | Nessuno | Nessuna dipendenza third-party |
-| macOS PDFium (futuro) | .dylib | `Contents/MacOS/` + RPATH `@loader_path` | Firma separata prima del bundle |
-| Windows | .dll | Stessa cartella del .vst3 | In PATH come alternativa |
-| Linux | .so | Stessa cartella del .so | RPATH `$ORIGIN` nel linker |
-| iOS CoreGraphics + PDFKit | system frameworks | Nessuno | End-to-end external pending fino a C01 |
-| Android | .so | APK, una per ABI | 4 ABI = 4 .so separati |
+- verificare runtime dependency loading;
+- eseguire V01;
+- non distribuire binari PDFium diversi dal manifest/header vendorizzati.
