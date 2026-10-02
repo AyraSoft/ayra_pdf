@@ -190,3 +190,7 @@ Runbook: `_docs/08_verification_v01.md`.
 Il codice e' **implementation-complete staticamente** e V01 ha ora uno smoke test
 cross-backend riproducibile. Le specifiche backend 03/04 sono state riallineate al codice corrente. La release non va dichiarata production-verified finche'
 V01 non viene eseguito in un ambiente con build/test/CI.
+
+
+La fixture testuale include anche un documento WinAnsi con carattere accentato, per proteggere
+extract/search case-insensitive tra backend Apple/PDFium oltre al solo ASCII.

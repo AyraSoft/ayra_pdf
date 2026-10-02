@@ -169,6 +169,87 @@ juce::MemoryBlock makePdfFixture()
     return output.getMemoryBlock();
 }
 
+juce::MemoryBlock makeWinAnsiTextFixture()
+{
+    juce::MemoryOutputStream output;
+    std::vector<juce::int64> offsets (7, 0);
+
+    const auto beginObject = [&] (int objectNumber)
+    {
+        offsets[static_cast<size_t> (objectNumber)] = output.getPosition();
+        appendPdfAscii (output, juce::String (objectNumber) + " 0 obj\n");
+    };
+
+    appendPdfAscii (output, "%PDF-1.4\n");
+
+    beginObject (1);
+    appendPdfAscii (output, "<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+    beginObject (2);
+    appendPdfAscii (
+        output,
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+
+    beginObject (3);
+    appendPdfAscii (
+        output,
+        "<< /Type /Page /Parent 2 0 R "
+        "/MediaBox [0 0 300 400] "
+        "/Resources << /Font << /F1 5 0 R >> >> "
+        "/Contents 4 0 R >>\nendobj\n");
+
+    // PDF literal string uses one raw WinAnsi byte 0xC9 for capital E-acute.
+    // Keep this stream byte-oriented: appendPdfAscii would UTF-8 encode it.
+    static constexpr char content[] =
+        "BT\n"
+        "/F1 20 Tf\n"
+        "40 200 Td\n"
+        "(CAF\311 AYRA) Tj\n"
+        "ET\n";
+
+    beginObject (4);
+    appendPdfAscii (
+        output,
+        juce::String ("<< /Length ")
+            + juce::String (static_cast<juce::int64> (sizeof (content) - 1))
+            + " >>\nstream\n");
+    output.write (content, sizeof (content) - 1);
+    appendPdfAscii (output, "endstream\nendobj\n");
+
+    beginObject (5);
+    appendPdfAscii (
+        output,
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
+        "/Encoding /WinAnsiEncoding >>\nendobj\n");
+
+    beginObject (6);
+    appendPdfAscii (output, "<< /Producer (Ayra Test) >>\nendobj\n");
+
+    const auto xrefOffset = output.getPosition();
+
+    appendPdfAscii (output, "xref\n0 7\n");
+    appendPdfAscii (output, "0000000000 65535 f \n");
+
+    for (int objectNumber = 1; objectNumber <= 6; ++objectNumber)
+    {
+        appendPdfAscii (
+            output,
+            juce::String (offsets[static_cast<size_t> (objectNumber)])
+                .paddedLeft ('0', 10)
+                + " 00000 n \n");
+    }
+
+    appendPdfAscii (
+        output,
+        juce::String ("trailer\n"
+                      "<< /Size 7 /Root 1 0 R >>\n"
+                      "startxref\n")
+            + juce::String (xrefOffset)
+            + "\n%%EOF\n");
+
+    return output.getMemoryBlock();
+}
+
 bool rectangleApproximatelyEquals (juce::Rectangle<float> actual,
                                    juce::Rectangle<float> expected,
                                    float epsilon = 0.001f)
@@ -489,6 +570,29 @@ public:
 
         const auto allMatches = document.findText ("ayra");
         expectEquals (allMatches.size(), 4);
+
+        beginTest ("WinAnsi accented text extracts and searches consistently");
+
+        {
+            const auto unicodeFixture = makeWinAnsiTextFixture();
+            expect (unicodeFixture.getSize() > 0);
+
+            PdfDocument unicodeDocument;
+            expect (unicodeDocument.open (
+                unicodeFixture.getData(),
+                unicodeFixture.getSize()));
+
+            const auto expectedWord = juce::String::fromUTF8 ("CAF\xC3\x89");
+            const auto query = juce::String::fromUTF8 ("caf\xC3\xA9");
+            const auto extracted = unicodeDocument.extractText (0);
+            const auto matches = unicodeDocument.findText (query, 0);
+
+            expect (extracted.contains (expectedWord));
+            expectEquals (matches.size(), 1);
+
+            if (!matches.isEmpty())
+                expect (matches[0].text.equalsIgnoreCase (query));
+        }
 
         beginTest ("Save is byte-preserving");
 

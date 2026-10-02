@@ -38,7 +38,7 @@ Copertura fixture generata in memoria:
 - MediaBox/CropBox differenti;
 - /Rotate 0/90/180/270;
 - marker colore per orientamento raster;
-- text extraction/search;
+- text extraction/search ASCII + WinAnsi accentato;
 - geometry highlight;
 - save byte-preserving;
 - load fallito transazionale;
