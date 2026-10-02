@@ -118,3 +118,10 @@ la posizione top-left resta vuota e il relativo setter non modifica stato.
 The module test suite statically checks the complete historical `PDFComponent` method surface
 (load, navigation, geometry, zoom/pan, export and memory I/O), in addition to the type alias itself.
 This makes source-compatibility regression a compile-time failure instead of a consumer-only discovery.
+
+
+## Search resource guard
+
+`PdfViewComponent::setSearchQuery()` enforces the same canonical UTF-8 query budget as the
+renderers before retaining/copying the query into worker state. Oversized queries fail closed,
+clear derived highlights, and never reach the worker/backend.

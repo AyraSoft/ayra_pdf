@@ -553,6 +553,22 @@ void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
 
 void PdfViewComponent::setSearchQuery (const juce::String& query)
 {
+    const auto queryBytes = static_cast<std::uint64_t> (query.getNumBytesAsUTF8());
+
+    if (queryBytes > detail::maxSearchQueryUtf8Bytes)
+    {
+        const bool hadSearchState = searchQuery.isNotEmpty()
+                                 || !searchResults.isEmpty();
+
+        searchQuery.clear();
+        invalidateSearchResults();
+
+        if (hadSearchState)
+            notifySearchResultsChanged();
+
+        return;
+    }
+
     if (query == searchQuery)
         return;
 

@@ -291,10 +291,12 @@ public:
             {
                 int loaded { 0 };
                 int closed { 0 };
+                int searchChanged { 0 };
 
                 void pdfPageChanged (PdfViewComponent*, int) override {}
                 void pdfDocumentLoaded (PdfViewComponent*) override { ++loaded; }
                 void pdfDocumentClosed (PdfViewComponent*) override { ++closed; }
+                void pdfSearchResultsChanged (PdfViewComponent*, int) override { ++searchChanged; }
             };
 
             auto shared = std::make_shared<PdfDocument>();
@@ -321,6 +323,16 @@ public:
             view.setPageNumber (2);
             expectEquals (view.getCurrentPageOnScreen(), 2);
             expectWithinAbsoluteError (view.getCurrentPageZoom(), 1.0f, 0.0001f);
+
+            view.setSearchQuery ("AYRA");
+            const int searchNotificationsBeforeOversize = listener.searchChanged;
+            const auto oversizedWidgetQuery = juce::String::repeatedString (
+                "x",
+                static_cast<int> (detail::maxSearchQueryUtf8Bytes + 1u));
+            view.setSearchQuery (oversizedWidgetQuery);
+            expectEquals (view.getSearchResultCount(), 0);
+            expectEquals (listener.searchChanged,
+                          searchNotificationsBeforeOversize + 1);
 
             static constexpr char invalidWidgetPdf[] = "not a pdf";
             view.loadDocumentFromMemoryBlock (

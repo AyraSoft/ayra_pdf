@@ -147,7 +147,10 @@ public:
     //==============================================================================
     // SEARCH OVERLAY
 
-    /** Imposta la query evidenziata sulla pagina corrente. Stringa vuota = clear. */
+    /** Imposta la query evidenziata sulla pagina corrente. Stringa vuota = clear.
+     *  Query oltre il budget UTF-8 canonico vengono rifiutate fail-closed senza
+     *  accodare lavoro al worker.
+     */
     void setSearchQuery (const juce::String& query);
 
     void clearSearch();
