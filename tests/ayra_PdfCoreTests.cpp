@@ -269,6 +269,24 @@ public:
             expectEquals (view.getCurrentPageOnScreen(), 2);
             expectWithinAbsoluteError (view.getCurrentPageZoom(), 1.0f, 0.0001f);
 
+            static constexpr char invalidWidgetPdf[] = "not a pdf";
+            view.loadDocumentFromMemoryBlock (
+                invalidWidgetPdf,
+                static_cast<int> (sizeof (invalidWidgetPdf) - 1));
+            expect (view.thereIsADocumentLoaded());
+            expectEquals (view.getCurrentPageOnScreen(), 2);
+            expectEquals (listener.loaded, 1);
+            expectEquals (callbackLoaded, 1);
+
+            view.loadDocument (
+                juce::File::getSpecialLocation (juce::File::tempDirectory)
+                    .getNonexistentChildFile ("ayra_pdf_missing", ".pdf", false)
+                    .getFullPathName());
+            expect (view.thereIsADocumentLoaded());
+            expectEquals (view.getCurrentPageOnScreen(), 2);
+            expectEquals (listener.loaded, 1);
+            expectEquals (callbackLoaded, 1);
+
             view.setDocument (nullptr);
             expect (! view.thereIsADocumentLoaded());
             expectEquals (view.getTotPagesNum(), -1);
