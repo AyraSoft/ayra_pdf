@@ -79,3 +79,7 @@ Neither the CMake linker helper nor the provisioning script maintains a parallel
 `arm64-v8a`/`armeabi-v7a` mapping. CMake selects the manifest asset whose `abi` matches
 `CMAKE_ANDROID_ARCH_ABI`; the setup script installs into the directory named by that same manifest
 field. Adding/changing an ABI therefore requires one manifest change, not synchronized lookup tables.
+
+### Provisioning asset enumeration
+
+Provisioning scripts no longer maintain a second list of supported PDFium asset suffixes. Explicit `--arch` / `-Platform` values are accepted only when the corresponding manifest asset exists, and Android `--arch all` enumerates every `android-*` key directly from the manifest. Host architecture detection remains a normalization layer from OS names to manifest suffixes.

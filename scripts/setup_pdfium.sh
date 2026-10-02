@@ -22,8 +22,8 @@ usage()
 {
     cat <<'EOF'
 Usage:
-  setup_pdfium.sh --platform linux [--arch x64|x86|arm64|arm] [--force]
-  setup_pdfium.sh --platform android --arch x64|x86|arm64|arm|all [--force]
+  setup_pdfium.sh --platform linux [--arch <manifest-suffix>] [--force]
+  setup_pdfium.sh --platform android --arch <manifest-suffix>|all [--force]
 
 Apple targets use CoreGraphics + PDFKit and do not use PDFium.
 EOF
@@ -70,10 +70,11 @@ if [[ "${PLATFORM}" == linux && -z "${ARCH}" ]]; then
     ARCH="$(detect_linux_arch)" || { error "Architettura Linux non supportata: $(uname -m)"; exit 1; }
 fi
 if [[ "${PLATFORM}" == android && -z "${ARCH}" ]]; then
-    error 'Per Android specifica --arch arm|arm64|x86|x64|all.'; exit 1
+    error 'Per Android specifica --arch <manifest-suffix>|all.'; exit 1
 fi
-case "${ARCH}" in arm|arm64|x86|x64|all) ;; *) error "Architettura non valida: ${ARCH}"; exit 1 ;; esac
-if [[ "${PLATFORM}" == linux && "${ARCH}" == all ]]; then error '--arch all e ammesso solo per Android'; exit 1; fi
+if [[ "${PLATFORM}" == linux && "${ARCH}" == all ]]; then
+    error '--arch all e ammesso solo per Android'; exit 1
+fi
 
 manifest_value()
 {
@@ -167,7 +168,19 @@ PY
 log "PDFium pinned: $VERSION"
 
 if [[ "$PLATFORM" == android && "$ARCH" == all ]]; then
-    for target_arch in arm arm64 x86 x64; do install_one android "$target_arch"; done
+    while IFS= read -r target_arch; do
+        [[ -n "$target_arch" ]] || continue
+        install_one android "$target_arch"
+    done < <(
+        python3 - "$MANIFEST" <<'PY'
+import json, sys
+with open(sys.argv[1], 'r', encoding='utf-8') as handle:
+    assets = json.load(handle)['assets']
+for key in sorted(assets):
+    if key.startswith('android-'):
+        print(key[len('android-'):])
+PY
+    )
 else
     install_one "$PLATFORM" "$ARCH"
 fi

@@ -3,7 +3,6 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('x64', 'x86', 'arm64')]
     [string]$Platform = '',
     [switch]$Force
 )
@@ -49,7 +48,11 @@ if ([string]::IsNullOrEmpty($Platform))
 
 $AssetKey = "win-$Platform"
 $AssetProperty = $Manifest.assets.PSObject.Properties[$AssetKey]
-if ($null -eq $AssetProperty) { Write-Err "Asset non presente nel manifest: $AssetKey"; exit 1 }
+if ($null -eq $AssetProperty)
+{
+    Write-Err "Architettura Windows non presente nel manifest: $AssetKey"
+    exit 1
+}
 $Asset = $AssetProperty.Value
 
 $Tar = Get-Command tar.exe -ErrorAction SilentlyContinue
