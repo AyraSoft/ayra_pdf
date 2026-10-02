@@ -81,7 +81,7 @@ public:
     //==============================================================================
     // DOCUMENTO E NAVIGAZIONE
 
-    void loadDocument (const juce::String& filePath);
+    void loadDocument (juce::String filePath);
 
     [[nodiscard]] bool thereIsADocumentLoaded() const;
 
@@ -125,8 +125,8 @@ public:
     //==============================================================================
     // I/O
 
-    void exportCurrentDocument (const juce::String& withName,
-                                const juce::String& folderPath) const;
+    void exportCurrentDocument (juce::String withName,
+                                juce::String folderPath) const;
 
     void loadDocumentFromMemoryBlock (const void* data, int sizeInBytes);
 

@@ -335,7 +335,7 @@ PdfViewComponent::~PdfViewComponent()
     renderState.reset();
 }
 
-void PdfViewComponent::loadDocument (const juce::String& filePath)
+void PdfViewComponent::loadDocument (juce::String filePath)
 {
     auto candidate = std::make_shared<PdfDocument>();
 
@@ -462,8 +462,8 @@ juce::Rectangle<float> PdfViewComponent::getCurrentPageBounds() const
              displaySize.y * currentZoom };
 }
 
-void PdfViewComponent::exportCurrentDocument (const juce::String& withName,
-                                              const juce::String& folderPath) const
+void PdfViewComponent::exportCurrentDocument (juce::String withName,
+                                              juce::String folderPath) const
 {
     if (!thereIsADocumentLoaded())
         return;
