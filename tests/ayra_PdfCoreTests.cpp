@@ -480,6 +480,18 @@ public:
         expect (document.saveToMemoryBlock (afterFailure));
         expect (afterFailure == fixture);
 
+        beginTest ("Truncated PDF replacement is rejected transactionally");
+
+        const size_t truncatedBytes = std::min<size_t> (32u, fixture.getSize());
+        expect (truncatedBytes > 0);
+        expect (! document.open (fixture.getData(), truncatedBytes));
+        expect (document.isOpen());
+        expectEquals (document.getPageCount(), 4);
+
+        juce::MemoryBlock afterTruncatedFailure;
+        expect (document.saveToMemoryBlock (afterTruncatedFailure));
+        expect (afterTruncatedFailure == fixture);
+
         beginTest ("Resource budgets fail before touching oversized payload memory");
 
         expectEquals (
