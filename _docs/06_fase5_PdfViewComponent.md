@@ -134,3 +134,10 @@ Visual zoom and raster resolution are intentionally separate. The page may remai
 budgets. The cached image is then composited into the visual page bounds. This prevents valid high
 zoom/HiDPI states from turning blank merely because a full-resolution raster would exceed the safety
 budget.
+
+
+## Allocation failure on direct load
+
+Direct widget file/memory loads stage the replacement `PdfDocument` inside a `bad_alloc` boundary.
+Allocation failure preserves the active document and all current view state, matching the same
+transactional rule used for malformed/unsupported PDF input.

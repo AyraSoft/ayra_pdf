@@ -388,12 +388,22 @@ PdfViewComponent::~PdfViewComponent()
 
 void PdfViewComponent::loadDocument (juce::String filePath)
 {
-    auto candidate = std::make_shared<PdfDocument>();
+    try
+    {
+        auto candidate = std::make_shared<PdfDocument>();
 
-    if (!candidate->open (juce::File (filePath)) || candidate->getPageCount() <= 0)
-        return;
+        if (!candidate->open (juce::File (filePath))
+            || candidate->getPageCount() <= 0)
+        {
+            return;
+        }
 
-    activateDocument (std::move (candidate));
+        activateDocument (std::move (candidate));
+    }
+    catch (const std::bad_alloc&)
+    {
+        // Transactional failure: keep the current document/view state.
+    }
 }
 
 bool PdfViewComponent::thereIsADocumentLoaded() const
@@ -545,15 +555,22 @@ void PdfViewComponent::loadDocumentFromMemoryBlock (const void* data, int sizeIn
     if (data == nullptr || sizeInBytes <= 0)
         return;
 
-    auto candidate = std::make_shared<PdfDocument>();
-
-    if (!candidate->open (data, static_cast<size_t> (sizeInBytes))
-        || candidate->getPageCount() <= 0)
+    try
     {
-        return;
-    }
+        auto candidate = std::make_shared<PdfDocument>();
 
-    activateDocument (std::move (candidate));
+        if (!candidate->open (data, static_cast<size_t> (sizeInBytes))
+            || candidate->getPageCount() <= 0)
+        {
+            return;
+        }
+
+        activateDocument (std::move (candidate));
+    }
+    catch (const std::bad_alloc&)
+    {
+        // Transactional failure: keep the current document/view state.
+    }
 }
 
 void PdfViewComponent::getMemoryBlockFromDocument (juce::MemoryBlock& destData)
