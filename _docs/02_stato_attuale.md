@@ -165,7 +165,8 @@ Durante il preflight statico sono stati inoltre chiusi:
 - visible page box uniforme tra Apple/PDFium (MediaBox intersect CropBox);
 - geometry post-rotation centralizzata in `PdfPage::getDisplayBounds()`;
 - publication worker GUI tramite `AsyncUpdater` cancellabile;
-- self-lifetime del RenderState durante callback che possono distruggere il widget.
+- self-lifetime del RenderState durante callback che possono distruggere il widget;
+- teardown widget con render/search accodati e drain deterministico del pool condiviso.
 Il test genera in memoria una fixture PDF ASCII con:
 - 4 pagine /Rotate 0/90/180/270;
 - MediaBox e CropBox differenti;

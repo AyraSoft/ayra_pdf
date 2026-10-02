@@ -45,7 +45,7 @@ Copertura fixture generata in memoria:
 4. zoom/drag/wheel/pinch;
 5. Retina e cambio display scale;
 6. query durante cambio pagina/zoom;
-7. distruzione widget con render/search in-flight;
+7. distruzione widget con render/search in-flight (contract test + sanitizer run);
 8. PDFKit text/search da worker;
 9. save byte equality.
 

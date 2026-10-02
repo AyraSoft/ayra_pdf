@@ -405,6 +405,33 @@ public:
         }
        #endif
 
+       #ifndef AYRA_PDF_HEADLESS
+        beginTest ("Widget teardown detaches in-flight render and search work");
+
+        {
+            for (int iteration = 0; iteration < 8; ++iteration)
+            {
+                auto shared = std::make_shared<PdfDocument>();
+                expect (shared->open (fixture.getData(), fixture.getSize()));
+
+                auto view = std::make_unique<PdfViewComponent>();
+                view->setBounds (0, 0, 800, 600);
+                view->setDocument (shared);
+                view->setSearchQuery ("AYRA");
+                view->setCurrentPageZoom (
+                    4.0f,
+                    juce::Point<float> { 400.0f, 300.0f });
+
+                // Destruction must detach the raw Message-Thread owner while
+                // shared RenderState/document snapshots keep worker lifetime safe.
+                view.reset();
+            }
+
+            expect (getPdfRenderPool().removeAllJobs (false, 5000));
+            expectEquals (getPdfRenderPool().getNumJobs(), 0);
+        }
+       #endif
+
         for (int pageIndex = 0; pageIndex < 4; ++pageIndex)
         {
             const auto info = document.getPage (pageIndex);
