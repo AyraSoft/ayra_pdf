@@ -71,3 +71,11 @@ La `.so` deve essere linkata e inclusa nel package Android per la stessa ABI.
 ## 8. Verification
 
 Vedere `_docs/08_verification_v01.md`.
+
+### Android ABI ownership
+
+The Android ABI string is owned by `third_party/pdfium/pdfium_manifest.json` (`assets.*.abi`).
+Neither the CMake linker helper nor the provisioning script maintains a parallel
+`arm64-v8a`/`armeabi-v7a` mapping. CMake selects the manifest asset whose `abi` matches
+`CMAKE_ANDROID_ARCH_ABI`; the setup script installs into the directory named by that same manifest
+field. Adding/changing an ABI therefore requires one manifest change, not synchronized lookup tables.

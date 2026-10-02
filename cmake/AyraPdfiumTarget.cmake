@@ -37,18 +37,42 @@ function(ayra_pdf_link_pdfium target)
     if(ANDROID)
         set(AYRA_PDF_PLATFORM "android")
         set(AYRA_PDF_ABI "${CMAKE_ANDROID_ARCH_ABI}")
+        set(AYRA_PDF_ASSET_KEY "")
 
-        if(AYRA_PDF_ABI STREQUAL "armeabi-v7a")
-            set(AYRA_PDF_ARCH "arm")
-        elseif(AYRA_PDF_ABI STREQUAL "arm64-v8a")
-            set(AYRA_PDF_ARCH "arm64")
-        elseif(AYRA_PDF_ABI STREQUAL "x86")
-            set(AYRA_PDF_ARCH "x86")
-        elseif(AYRA_PDF_ABI STREQUAL "x86_64")
-            set(AYRA_PDF_ARCH "x64")
-        else()
+        string(JSON AYRA_PDF_ASSET_COUNT
+            LENGTH "${AYRA_PDF_MANIFEST_JSON}" assets)
+
+        if(AYRA_PDF_ASSET_COUNT GREATER 0)
+            math(EXPR AYRA_PDF_LAST_ASSET_INDEX
+                "${AYRA_PDF_ASSET_COUNT} - 1")
+
+            foreach(AYRA_PDF_ASSET_INDEX
+                    RANGE 0 ${AYRA_PDF_LAST_ASSET_INDEX})
+                string(JSON AYRA_PDF_CANDIDATE_KEY
+                    MEMBER "${AYRA_PDF_MANIFEST_JSON}"
+                    assets ${AYRA_PDF_ASSET_INDEX})
+
+                if(NOT AYRA_PDF_CANDIDATE_KEY MATCHES "^android-")
+                    continue()
+                endif()
+
+                string(JSON AYRA_PDF_CANDIDATE_ABI
+                    ERROR_VARIABLE AYRA_PDF_ABI_JSON_ERROR
+                    GET "${AYRA_PDF_MANIFEST_JSON}"
+                    assets "${AYRA_PDF_CANDIDATE_KEY}" abi)
+
+                if(NOT AYRA_PDF_ABI_JSON_ERROR
+                   AND AYRA_PDF_CANDIDATE_ABI STREQUAL AYRA_PDF_ABI)
+                    set(AYRA_PDF_ASSET_KEY "${AYRA_PDF_CANDIDATE_KEY}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+
+        if(NOT AYRA_PDF_ASSET_KEY)
             message(FATAL_ERROR
-                "Unsupported Android ABI for PDFium: ${CMAKE_ANDROID_ARCH_ABI}")
+                "No PDFium manifest asset declares Android ABI "
+                "'${CMAKE_ANDROID_ARCH_ABI}'")
         endif()
 
         set(AYRA_PDF_PROVISIONED_DIR
@@ -83,7 +107,10 @@ function(ayra_pdf_link_pdfium target)
             "${AYRA_PDF_PLATFORM}/${AYRA_PDF_ARCH}")
     endif()
 
-    set(AYRA_PDF_ASSET_KEY "${AYRA_PDF_PLATFORM}-${AYRA_PDF_ARCH}")
+    if(NOT ANDROID)
+        set(AYRA_PDF_ASSET_KEY
+            "${AYRA_PDF_PLATFORM}-${AYRA_PDF_ARCH}")
+    endif()
 
     string(JSON AYRA_PDF_RUNTIME_ARCHIVE_PATH
         ERROR_VARIABLE AYRA_PDF_RUNTIME_JSON_ERROR

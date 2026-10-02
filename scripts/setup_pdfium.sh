@@ -104,31 +104,28 @@ install_headers()
     cp -R "$source_include/." "$PDFIUM_DIR/include/"
 }
 
-android_abi()
-{
-    case "$1" in
-        arm) echo armeabi-v7a ;;
-        arm64) echo arm64-v8a ;;
-        x86) echo x86 ;;
-        x64) echo x86_64 ;;
-        *) return 1 ;;
-    esac
-}
-
 install_one()
 {
-    local platform="$1" arch="$2" key url expected_hash runtime_path
+    local platform="$1" arch="$2" key url expected_hash runtime_path abi
     local archive_name archive_path extract_dir out_dir out_lib stamp_path expected_stamp actual_hash
     key="${platform}-${arch}"
     url="$(manifest_value "$key" url)" || { error "Asset non presente: $key"; return 1; }
     expected_hash="$(manifest_value "$key" sha256)"
     runtime_path="$(manifest_value "$key" runtime_path)"
+    abi=""
     archive_name="$(basename "$url")"
     archive_path="$TEMP_DIR/$archive_name"
     extract_dir="$TEMP_DIR/ext_$key"
 
-    if [[ "$platform" == linux ]]; then out_dir="$PDFIUM_DIR/linux/$arch";
-    else out_dir="$PDFIUM_DIR/android/$(android_abi "$arch")"; fi
+    if [[ "$platform" == linux ]]; then
+        out_dir="$PDFIUM_DIR/linux/$arch"
+    else
+        abi="$(manifest_value "$key" abi)" || {
+            error "ABI Android mancante nel manifest: $key"
+            return 1
+        }
+        out_dir="$PDFIUM_DIR/android/$abi"
+    fi
     out_lib="$out_dir/libpdfium.so"
     stamp_path="$out_dir/.pdfium-installed"
     expected_stamp="$VERSION|$key|$expected_hash"
