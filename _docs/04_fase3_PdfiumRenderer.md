@@ -316,12 +316,12 @@ void PdfiumRenderer::close() noexcept
 - [x] Rimosso fallback `AYRA_PDFIUM_AVAILABLE/__has_include`: backend/link obbligatori
 - [x] `loadFromFile` — bounded JUCE read -> percorso memory canonico
 - [x] `loadFromMemory` — `FPDF_LoadMemDocument64`, commit transazionale
-- [ ] `saveToFile` — snapshot byte-preserving + `replaceWithData`
-- [ ] `saveToMemory` — snapshot byte-preserving transazionale
+- [x] `saveToFile` — snapshot byte-preserving + `replaceWithData`
+- [x] `saveToMemory` — snapshot byte-preserving transazionale
 - [x] `close` — `FPDF_CloseDocument` prima del reset backing data
 - [x] `getPageCount` — `FPDF_GetPageCount` serializzato
 - [x] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
-- [ ] `renderPage` — bounded direct bitmap; Android reverse-byte-order flag
+- [x] `renderPage` — bounded direct bitmap; Android reverse-byte-order flag
 - [ ] `extractText` — `FPDFText_LoadPage` + `FPDFText_GetText` + UTF-16LE -> juce::String
 - [ ] `findText` — `FPDFText_FindStart/Next/Close` + `FPDFText_GetCharBox`
 - [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali

@@ -43,8 +43,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **M04** | Mac renderer | Estrazione testo + ricerca PDFKit con bounds esatti | M01 | **done (static)** |
 | **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | **done (static)** |
 | **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | **done (static)** |
-| **P02** | PDFium | Render + save file/memory | P01 | **in progress** |
-| **P03** | PDFium | Extract/search con bounds esatti | P01 | pending |
+| **P02** | PDFium | Render + save file/memory | P01 | **done (static)** |
+| **P03** | PDFium | Extract/search con bounds esatti | P01 | **in progress** |
 | **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | pending |
 | **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | pending |
 | **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | pending |
@@ -331,6 +331,47 @@ del backend Apple, senza introdurre ricostruzioni del PDF o conversioni pixel ri
 
 ---
 
+## Esito P02
+
+**P02 (2026-10-02)**: save file/memory e' byte-preserving dai backing bytes P01;
+lo snapshot avviene sotto lock e l'I/O file fuori lock. Il raster usa
+`juce::SoftwareImageType` + `FPDFBitmap_BGRA`, backdrop bianco, page content only,
+limiti raster condivisi, e `rotate=0` perche' la page matrix PDFium incorpora la /Rotate.
+Android usa `FPDF_REVERSE_BYTE_ORDER`; Win/Linux non eseguono post-process dei canali.
+Handle page/bitmap vengono distrutti prima del rilascio della lock process-wide.
+Pixel/orientation/save equality runtime: **external pending**.
+
+## Change Contract — P03 PDFium text / search
+
+**Task model**: completare il content model non-Apple con Unicode e geometria coerenti
+con M04 Apple, senza parsing testuale proprietario.
+
+**Canonical owner**:
+- PDFium `fpdf_text.h`: estrazione, search e rettangoli;
+- `PdfSearchResult`: semantica bounds cross-backend;
+- `ayra_PdfSafetyLimits.h`: budget query/testo/risultati.
+
+**Invariants**:
+- tutte le API `FPDFText_*` usano la stessa lock process-wide P01;
+- UTF-16LE e surrogate pair preservati; niente cast da wchar_t;
+- `findText` case-insensitive (`flags=0`);
+- exact match text estratto dal text page, non sostituito con la query;
+- bounds = unione dei rect PDFium del range trovato, in page space lower-left/Y-up;
+- risultati senza geometria valida non vengono pubblicati;
+- max risultati superato -> failure atomico;
+- char count/code units/query sono bounded prima di allocare;
+- RAII chiude search handle, text page e page prima di rilasciare la lock.
+
+**Acceptance criteria P03**:
+- `extractText` e `findText` reali; nessun `jassertfalse` resta in PdfiumRenderer;
+- Unicode BMP + surrogate pair preservati;
+- match multiline produce bounds validi;
+- pageIndex -1/targhettizzato validati;
+- static diff audit completato;
+- fixture Unicode/Type0/CMap/multiline + stress serializzazione: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
@@ -343,7 +384,7 @@ del backend Apple, senza introdurre ricostruzioni del PDF o conversioni pixel ri
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.mm` | ✅ M01-M04 completi staticamente | macOS/iOS | 2 |
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
-| `renderer/pdfium/ayra_PdfiumRenderer.cpp` | 🟠 P01 completo; P02-P03 pending | Win/Linux/Android | 3 |
+| `renderer/pdfium/ayra_PdfiumRenderer.cpp` | 🟠 P01-P02 completi; P03 in progress | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
 | `widgets/ayra_PdfViewComponent.cpp` | ⚠️ parziale (setDocument funziona, resto stub) | tutte | 5 |
 | `widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h` | ✅ completo | tutte | 1 |
