@@ -24,6 +24,7 @@
 #include "../../third_party/pdfium/include/fpdfview.h"
 #include "../../third_party/pdfium/include/fpdf_edit.h"
 #include "../../third_party/pdfium/include/fpdf_transformpage.h"
+#include "../../third_party/pdfium/include/fpdf_text.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,6 +32,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <vector>
 
 namespace ayra
 {
@@ -119,6 +121,117 @@ public:
 private:
     FPDF_BITMAP bitmap { nullptr };
 };
+
+class ScopedPdfiumTextPage final
+{
+public:
+    explicit ScopedPdfiumTextPage (FPDF_TEXTPAGE textPageIn) noexcept : textPage (textPageIn) {}
+    ~ScopedPdfiumTextPage()
+    {
+        if (textPage != nullptr)
+            FPDFText_ClosePage (textPage);
+    }
+
+    [[nodiscard]] FPDF_TEXTPAGE get() const noexcept { return textPage; }
+
+private:
+    FPDF_TEXTPAGE textPage { nullptr };
+};
+
+class ScopedPdfiumSearch final
+{
+public:
+    explicit ScopedPdfiumSearch (FPDF_SCHHANDLE handleIn) noexcept : handle (handleIn) {}
+    ~ScopedPdfiumSearch()
+    {
+        if (handle != nullptr)
+            FPDFText_FindClose (handle);
+    }
+
+    [[nodiscard]] FPDF_SCHHANDLE get() const noexcept { return handle; }
+
+private:
+    FPDF_SCHHANDLE handle { nullptr };
+};
+
+[[nodiscard]] constexpr FPDF_WCHAR byteSwap16 (FPDF_WCHAR value) noexcept
+{
+    return static_cast<FPDF_WCHAR> ((value >> 8) | (value << 8));
+}
+
+[[nodiscard]] bool makePdfiumWideString (const juce::String& source,
+                                         std::vector<FPDF_WCHAR>& destination)
+{
+    static_assert (sizeof (FPDF_WCHAR) == sizeof (juce::CharPointer_UTF16::CharType));
+
+    const auto sourceUtf8Bytes = static_cast<std::uint64_t> (source.getNumBytesAsUTF8());
+
+    if (source.isEmpty() || sourceUtf8Bytes == 0
+        || sourceUtf8Bytes > detail::maxSearchQueryUtf8Bytes)
+    {
+        return false;
+    }
+
+    const size_t capacityUnits = static_cast<size_t> (source.length()) * 2u + 1u;
+    destination.assign (capacityUnits, 0);
+
+    const auto bytesWritten = source.copyToUTF16 (
+        reinterpret_cast<juce::CharPointer_UTF16::CharType*> (destination.data()),
+        destination.size() * sizeof (FPDF_WCHAR));
+
+    if (bytesWritten < sizeof (FPDF_WCHAR)
+        || (bytesWritten % sizeof (FPDF_WCHAR)) != 0
+        || bytesWritten > destination.size() * sizeof (FPDF_WCHAR))
+    {
+        return false;
+    }
+
+   #if JUCE_BIG_ENDIAN
+    const size_t unitsWritten = bytesWritten / sizeof (FPDF_WCHAR);
+
+    for (size_t i = 0; i < unitsWritten; ++i)
+        destination[i] = byteSwap16 (destination[i]);
+   #endif
+
+    return destination.front() != 0;
+}
+
+[[nodiscard]] bool textRangeToJuceString (FPDF_TEXTPAGE textPage,
+                                          int startIndex,
+                                          int count,
+                                          juce::String& destination)
+{
+    static_assert (sizeof (FPDF_WCHAR) == sizeof (juce::CharPointer_UTF16::CharType));
+
+    if (textPage == nullptr || startIndex < 0 || count <= 0
+        || count > detail::maxTextCodeUnitsPerPage)
+    {
+        return false;
+    }
+
+    std::vector<FPDF_WCHAR> buffer (static_cast<size_t> (count) + 1u, 0);
+    const int written = FPDFText_GetText (textPage,
+                                          startIndex,
+                                          count,
+                                          buffer.data());
+
+    if (written <= 0 || written > static_cast<int> (buffer.size()))
+        return false;
+
+    buffer[static_cast<size_t> (written - 1)] = 0;
+
+   #if JUCE_BIG_ENDIAN
+    for (int i = 0; i < written - 1; ++i)
+        buffer[static_cast<size_t> (i)] = byteSwap16 (buffer[static_cast<size_t> (i)]);
+   #endif
+
+    destination = juce::String (
+        juce::CharPointer_UTF16 (
+            reinterpret_cast<const juce::CharPointer_UTF16::CharType*> (buffer.data())));
+
+    return static_cast<std::uint64_t> (destination.getNumBytesAsUTF8())
+        <= detail::maxTextUtf8BytesPerPage;
+}
 
 } // namespace
 
@@ -480,16 +593,207 @@ juce::Image PdfiumRenderer::renderPage (int pageIndex, float scale) noexcept
 
 juce::Array<PdfSearchResult> PdfiumRenderer::findText (const juce::String& query, int pageIndex) noexcept
 {
-    juce::ignoreUnused (query, pageIndex);
-    jassertfalse; // P03
-    return {};
+    if (query.isEmpty() || pageIndex < -1)
+        return {};
+
+    try
+    {
+        std::vector<FPDF_WCHAR> queryUtf16;
+
+        if (!makePdfiumWideString (query, queryUtf16))
+            return {};
+
+        juce::Array<PdfSearchResult> results;
+        int examinedMatches = 0;
+
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
+
+        if (impl->document == nullptr)
+            return {};
+
+        const int pageCount = FPDF_GetPageCount (impl->document);
+
+        if (pageCount <= 0 || (pageIndex >= 0 && pageIndex >= pageCount))
+            return {};
+
+        const int firstPage = pageIndex >= 0 ? pageIndex : 0;
+        const int lastPage = pageIndex >= 0 ? pageIndex : pageCount - 1;
+
+        for (int currentPage = firstPage; currentPage <= lastPage; ++currentPage)
+        {
+            ScopedPdfiumPage page (FPDF_LoadPage (impl->document, currentPage));
+
+            if (page.get() == nullptr)
+                return {};
+
+            ScopedPdfiumTextPage textPage (FPDFText_LoadPage (page.get()));
+
+            if (textPage.get() == nullptr)
+                return {};
+
+            const int charCount = FPDFText_CountChars (textPage.get());
+
+            if (charCount < 0 || charCount > detail::maxTextCodeUnitsPerPage)
+                return {};
+
+            if (charCount == 0)
+                continue;
+
+            ScopedPdfiumSearch search (
+                FPDFText_FindStart (textPage.get(),
+                                    queryUtf16.data(),
+                                    0,
+                                    0));
+
+            if (search.get() == nullptr)
+                return {};
+
+            while (FPDFText_FindNext (search.get()) != 0)
+            {
+                if (++examinedMatches > detail::maxSearchResults)
+                    return {};
+
+                const int matchIndex = FPDFText_GetSchResultIndex (search.get());
+                const int matchCount = FPDFText_GetSchCount (search.get());
+
+                if (matchIndex < 0 || matchCount <= 0
+                    || matchIndex > charCount
+                    || matchCount > charCount - matchIndex)
+                {
+                    return {};
+                }
+
+                const int rectCount = FPDFText_CountRects (textPage.get(),
+                                                          matchIndex,
+                                                          matchCount);
+
+                if (rectCount < 0)
+                    return {};
+
+                if (rectCount == 0)
+                    continue;
+
+                double unionLeft = std::numeric_limits<double>::infinity();
+                double unionBottom = std::numeric_limits<double>::infinity();
+                double unionRight = -std::numeric_limits<double>::infinity();
+                double unionTop = -std::numeric_limits<double>::infinity();
+
+                for (int rectIndex = 0; rectIndex < rectCount; ++rectIndex)
+                {
+                    double left = 0.0;
+                    double top = 0.0;
+                    double right = 0.0;
+                    double bottom = 0.0;
+
+                    if (FPDFText_GetRect (textPage.get(),
+                                          rectIndex,
+                                          &left,
+                                          &top,
+                                          &right,
+                                          &bottom) == 0)
+                    {
+                        return {};
+                    }
+
+                    if (!std::isfinite (left) || !std::isfinite (right)
+                        || !std::isfinite (bottom) || !std::isfinite (top)
+                        || right <= left || top <= bottom)
+                    {
+                        return {};
+                    }
+
+                    unionLeft = std::min (unionLeft, left);
+                    unionBottom = std::min (unionBottom, bottom);
+                    unionRight = std::max (unionRight, right);
+                    unionTop = std::max (unionTop, top);
+                }
+
+                const double width = unionRight - unionLeft;
+                const double height = unionTop - unionBottom;
+
+                if (!fitsFloat (unionLeft) || !fitsFloat (unionBottom)
+                    || !fitsFloat (width) || !fitsFloat (height)
+                    || width <= 0.0 || height <= 0.0)
+                {
+                    return {};
+                }
+
+                PdfSearchResult result;
+                result.pageIndex = currentPage;
+                result.bounds = { static_cast<float> (unionLeft),
+                                  static_cast<float> (unionBottom),
+                                  static_cast<float> (width),
+                                  static_cast<float> (height) };
+
+                if (!textRangeToJuceString (textPage.get(),
+                                            matchIndex,
+                                            matchCount,
+                                            result.text)
+                    || result.text.isEmpty())
+                {
+                    return {};
+                }
+
+                results.add (std::move (result));
+            }
+        }
+
+        return results;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
 }
 
 juce::String PdfiumRenderer::extractText (int pageIndex) noexcept
 {
-    juce::ignoreUnused (pageIndex);
-    jassertfalse; // P03
-    return {};
+    if (pageIndex < 0)
+        return {};
+
+    try
+    {
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
+
+        if (impl->document == nullptr)
+            return {};
+
+        const int pageCount = FPDF_GetPageCount (impl->document);
+
+        if (pageCount <= 0 || pageIndex >= pageCount)
+            return {};
+
+        ScopedPdfiumPage page (FPDF_LoadPage (impl->document, pageIndex));
+
+        if (page.get() == nullptr)
+            return {};
+
+        ScopedPdfiumTextPage textPage (FPDFText_LoadPage (page.get()));
+
+        if (textPage.get() == nullptr)
+            return {};
+
+        const int charCount = FPDFText_CountChars (textPage.get());
+
+        if (charCount < 0 || charCount > detail::maxTextCodeUnitsPerPage)
+            return {};
+
+        if (charCount == 0)
+            return {};
+
+        juce::String result;
+
+        if (!textRangeToJuceString (textPage.get(), 0, charCount, result))
+            return {};
+
+        return result;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
 }
 
 } // namespace ayra
