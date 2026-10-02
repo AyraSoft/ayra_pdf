@@ -148,3 +148,8 @@ transactional rule used for malformed/unsupported PDF input.
 Changing a non-empty query now makes invalidation observable at the widget boundary: if highlights
 were visible, the new worker request is staged first and listeners are then synchronously notified
 with result count 0. Consumers no longer need to maintain a parallel “stale count” reset policy.
+
+
+Page navigation also publishes search invalidation when the previous page had visible matches. The
+ordering is page-changed first, then search-count=0, with a `BailOutChecker` between callbacks so a
+listener may destroy the widget safely. Consumers therefore do not own page/search coherence.

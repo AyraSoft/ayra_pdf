@@ -468,6 +468,8 @@ void PdfViewComponent::setPageNumber (int pageNumber)
     if (!pageInfo.isValid())
         return;
 
+    const bool hadVisibleSearchResults = !searchResults.isEmpty();
+
     currentPage = pageNumber;
     currentZoom = 1.0f;
     topLeft = {};
@@ -478,7 +480,7 @@ void PdfViewComponent::setPageNumber (int pageNumber)
     invalidateSearchResults();
     requestPageRender();
     requestSearchResults();
-    notifyPageChanged();
+    notifyPageChanged (hadVisibleSearchResults);
 }
 
 float PdfViewComponent::getDocumentWidth() const
@@ -1157,7 +1159,7 @@ void PdfViewComponent::notifyDocumentClosed()
         onDocumentClosed();
 }
 
-void PdfViewComponent::notifyPageChanged()
+void PdfViewComponent::notifyPageChanged (bool searchResultsInvalidated)
 {
     const int page = currentPage;
     juce::Component::BailOutChecker checker (this);
@@ -1172,6 +1174,12 @@ void PdfViewComponent::notifyPageChanged()
 
     if (onPageChanged)
         onPageChanged (page);
+
+    if (checker.shouldBailOut())
+        return;
+
+    if (searchResultsInvalidated)
+        notifySearchResultsChanged();
 }
 
 void PdfViewComponent::notifySearchResultsChanged()

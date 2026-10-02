@@ -206,7 +206,7 @@ private:
 
     void notifyDocumentLoaded();
     void notifyDocumentClosed();
-    void notifyPageChanged();
+    void notifyPageChanged (bool searchResultsInvalidated = false);
     void notifySearchResultsChanged();
 
     std::shared_ptr<PdfDocument> currentDocument;
