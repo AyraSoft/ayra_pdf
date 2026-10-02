@@ -22,6 +22,8 @@
 
 #if JUCE_MAC || JUCE_IOS
 
+#include "../ayra_PdfSafetyLimits.h"
+
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -30,12 +32,6 @@
 
 namespace ayra
 {
-
-namespace
-{
-constexpr int maxRasterDimension = 16384;
-constexpr std::uint64_t maxRasterPixels = 64ull * 1024ull * 1024ull;
-}
 
 // ======================================================================
 // Impl — stato ObjC nascosto agli header C++
@@ -65,6 +61,14 @@ bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
     if (!file.existsAsFile())
         return false;
 
+    const auto fileSize = file.getSize();
+
+    if (fileSize <= 0
+        || static_cast<std::uint64_t> (fileSize) > detail::maxDocumentBytes)
+    {
+        return false;
+    }
+
     const auto path = file.getFullPathName();
     CGDataProviderRef provider = CGDataProviderCreateWithFilename (path.toRawUTF8());
 
@@ -88,35 +92,45 @@ bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
 
 bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcept
 {
-    if (data == nullptr || sizeBytes == 0)
-        return false;
-
-    auto newPdfData = std::make_unique<juce::MemoryBlock>();
-    newPdfData->replaceAll (data, sizeBytes);
-
-    CGDataProviderRef provider = CGDataProviderCreateWithData (nullptr,
-                                                               newPdfData->getData(),
-                                                               newPdfData->getSize(),
-                                                               nullptr);
-
-    if (provider == nullptr)
-        return false;
-
-    CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
-
-    if (newDocument == nullptr)
+    if (data == nullptr || sizeBytes == 0
+        || static_cast<std::uint64_t> (sizeBytes) > detail::maxDocumentBytes)
     {
-        CGDataProviderRelease (provider);
         return false;
     }
 
-    // Provider e backing storage restano entrambi owned dal renderer per tutta la vita
-    // del documento. Nessun puntatore ai byte sopravvive al proprio owner.
-    close();
-    impl->pdfData = std::move (newPdfData);
-    impl->provider = provider;
-    impl->document = newDocument;
-    return true;
+    try
+    {
+        auto newPdfData = std::make_unique<juce::MemoryBlock>();
+        newPdfData->replaceAll (data, sizeBytes);
+
+        CGDataProviderRef provider = CGDataProviderCreateWithData (nullptr,
+                                                                   newPdfData->getData(),
+                                                                   newPdfData->getSize(),
+                                                                   nullptr);
+
+        if (provider == nullptr)
+            return false;
+
+        CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
+
+        if (newDocument == nullptr)
+        {
+            CGDataProviderRelease (provider);
+            return false;
+        }
+
+        // Provider e backing storage restano entrambi owned dal renderer per tutta la vita
+        // del documento. Nessun puntatore ai byte sopravvive al proprio owner.
+        close();
+        impl->pdfData = std::move (newPdfData);
+        impl->provider = provider;
+        impl->document = newDocument;
+        return true;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
@@ -234,8 +248,8 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
 
     if (!std::isfinite (widthPixels) || !std::isfinite (heightPixels)
         || widthPixels <= 0.0 || heightPixels <= 0.0
-        || widthPixels > static_cast<double> (maxRasterDimension)
-        || heightPixels > static_cast<double> (maxRasterDimension))
+        || widthPixels > static_cast<double> (detail::maxRasterDimension)
+        || heightPixels > static_cast<double> (detail::maxRasterDimension))
     {
         return {};
     }
@@ -245,7 +259,7 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
     const auto pixelCount = static_cast<std::uint64_t> (width)
                           * static_cast<std::uint64_t> (height);
 
-    if (pixelCount > maxRasterPixels)
+    if (pixelCount > detail::maxRasterPixels)
         return {};
 
     const auto pageNumber = static_cast<size_t> (pageIndex) + 1u;
