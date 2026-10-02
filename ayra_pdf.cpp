@@ -29,18 +29,11 @@
 #include <vector>
 
 //==============================================================================
-// RENDERER PLATFORM-SPECIFICO
+// PLATFORM RENDERER
 
 #if JUCE_MAC || JUCE_IOS
   #include <CoreGraphics/CoreGraphics.h>
   #import <PDFKit/PDFKit.h>
-
-  #if JUCE_MAC && ! defined (AYRA_PDF_HEADLESS)
-    #include <Cocoa/Cocoa.h>
-    #include "pdf_component/Mac_PDF_core/PDFView.m"
-    #include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
-  #endif
-
   #include "renderer/mac/ayra_MacPdfRenderer.mm"
 
 #elif JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
@@ -56,11 +49,7 @@
 #include "engine/ayra_PdfDocument.cpp"
 
 //==============================================================================
-// WIDGETS
+// GUI
 #ifndef AYRA_PDF_HEADLESS
   #include "widgets/ayra_PdfViewComponent.cpp"
-
-  #if JUCE_MAC
-    #include "pdf_component/PDFComponent.cpp"
-  #endif
 #endif

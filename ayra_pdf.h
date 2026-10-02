@@ -21,7 +21,7 @@
   version:              2.0
   name:                 AYRA PDF
   description:          Rendering, ricerca, estrazione testo e visualizzazione PDF cross-platform.
-                        macOS/iOS usa CoreGraphics + PDFKit. Windows/Linux/Android usa PDFium (Apache 2.0).
+                        macOS/iOS usa CoreGraphics + PDFKit. Windows/Linux/Android usa PDFium.
   website:
   license:              Copyright. All Rights Reserved.
 
@@ -51,13 +51,13 @@
 #include <memory>
 
 //==============================================================================
-// ENGINE -- logica pura, headless-safe (nessuna dipendenza GUI)
+// ENGINE / DATA
 #include "engine/ayra_PdfPage.h"
 #include "engine/ayra_PdfSearchResult.h"
 #include "engine/ayra_PdfDocument.h"
 
 //==============================================================================
-// RENDERER -- interfaccia pura + header delle implementazioni platform-specific
+// RENDERER
 #include "renderer/ayra_PdfRenderer.h"
 
 #if JUCE_MAC || JUCE_IOS
@@ -67,14 +67,9 @@
 #endif
 
 //==============================================================================
-// WIDGETS -- esclusi in modalita' headless
+// GUI OPTIONAL
 #ifndef AYRA_PDF_HEADLESS
   #include "widgets/ayra_PdfViewComponent.h"
   #include "widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h"
   #include "widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h"
-
-  // Legacy AppKit temporaneo fino al cutover current-only C01.
-  #if JUCE_MAC
-    #include "pdf_component/PDFComponent.h"
-  #endif
 #endif

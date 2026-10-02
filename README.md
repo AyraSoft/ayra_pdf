@@ -1,426 +1,152 @@
 # ayra_pdf
 
-Modulo JUCE per la visualizzazione, navigazione e manipolazione di documenti PDF all'interno dell'ecosistema Ayra. Utilizzato nei plugin VST Ayra per mostrare documentazione tecnica (rider, schemi fixture, manuali GDTF) e nei pannelli informativi della DAW.
+Modulo JUCE current-only per lettura, rendering, ricerca, estrazione testo e visualizzazione PDF.
 
----
+**Stato al 2026-10-02:** l'implementazione v2 e' completa a livello statico. In questo ambiente
+non sono disponibili build, test binari o CI: la certificazione runtime cross-platform resta
+esplicitamente **external pending**. Lo stato operativo canonico vive in
+`_docs/02_stato_attuale.md`.
 
 ## Architettura
 
-Il modulo è in migrazione dalla struttura v1 monolitica a un'architettura v2 separata per concern:
-
-```
+```text
 ayra_pdf/
-├── ayra_pdf.h                         <- include aggregato del modulo
-├── ayra_pdf.cpp                       <- include aggregato + piattaforma .mm
-├── ayra_pdf.mm                        <- include Objective-C per macOS/iOS
-│
-├── engine/                            <- logica pura, headless-safe (Fase 2)
-│   ├── ayra_PdfDocument.h/.cpp        <- API principale: open, render, search, extract
-│   ├── ayra_PdfPage.h                 <- bounds, rotazione, metadata di pagina
-│   └── ayra_PdfSearchResult.h        <- risultato di findText()
-│
-├── renderer/                          <- backend platform-specific (Fase 3)
-│   ├── ayra_PdfRenderer.h             <- interfaccia pura (astrazione backend)
-│   ├── mac/ayra_MacPdfRenderer.mm     <- CoreGraphics + PDFKit: macOS/iOS
-│   └── pdfium/ayra_PdfiumRenderer.h/.cpp  <- PDFium: Windows/Linux/Android
-│
-├── widgets/                           <- JUCE Components (Fase 4)
-│   ├── ayra_PdfViewComponent.h/.cpp   <- widget principale, sostituto di PDFComponent
+├── ayra_pdf.h / ayra_pdf.cpp / ayra_pdf.mm
+├── engine/
+│   ├── ayra_PdfDocument.h/.cpp
+│   ├── ayra_PdfPage.h
+│   └── ayra_PdfSearchResult.h
+├── renderer/
+│   ├── ayra_PdfRenderer.h
+│   ├── ayra_PdfSafetyLimits.h
+│   ├── mac/ayra_MacPdfRenderer.h/.mm
+│   └── pdfium/ayra_PdfiumRenderer.h/.cpp
+├── widgets/
+│   ├── ayra_PdfViewComponent.h/.cpp
 │   └── look_and_feel/
-│       ├── ayra_PdfLookAndFeelMethods.h
-│       └── ayra_PdfDefaultLookAndFeel.h    <- implementazione inline nell'header (nessun .cpp)
-│
-├── third_party/pdfium/                <- PDFium (Fase 3)
-│   ├── include/                       <- headers (in git)
-│   ├── mac/                           <- libpdfium.a fat universal (NON in git)
-│   ├── win/                           <- pdfium.dll + pdfium.lib (NON in git)
-│   ├── linux/                         <- libpdfium.a (NON in git)
-│   ├── ios/                           <- libpdfium.a (NON in git)
-│   └── android/                       <- libpdfium.so per ABI (NON in git)
-│
-├── scripts/
-│   ├── setup_pdfium.sh                <- download binari macOS/Linux/iOS
-│   └── setup_pdfium.ps1               <- download binari Windows
-│
-└── pdf_component/                     <- LEGACY v1 (backward compat, rimozione Fase 5)
-    ├── PDFComponent.h/.cpp
-    ├── Mac_PDF_core/
-    ├── Windows_PDF_core/
-    └── Linux_PDF_core/
+├── third_party/pdfium/
+└── scripts/
 ```
 
-### Separazione engine / renderer / widget
+Non esiste piu' un percorso legacy parallelo. `PdfDocument` e `PdfViewComponent` sono le API
+correnti; non esiste alias `PDFComponent`.
 
-| Layer | Dipendenze | Headless | Descrizione |
-|-------|-----------|---------|-------------|
-| `engine/` | core + tipi grafici usati dall'API (`juce::Image`) | senza finestre | Stato documento, navigazione, ricerca, estrazione testo |
-| `renderer/` | tipi grafici JUCE + CoreGraphics/PDFKit o PDFium | senza finestre | Rasterizzazione + content model PDF |
-| `widgets/` | JUCE GUI + engine + renderer | no | Componenti visuali interattivi |
+### Backend
 
-L'engine non include mai header GUI. Un agente server-side o un renderer offline possono usare solo `engine/` + `renderer/` senza aprire alcuna finestra.
+| Target | Backend | Stato codice |
+|---|---|---|
+| macOS | CoreGraphics + PDFKit | complete static |
+| iOS | CoreGraphics + PDFKit | complete static |
+| Windows | PDFium | complete static |
+| Linux | PDFium | complete static |
+| Android | PDFium | complete static |
 
----
+"Complete static" non equivale a runtime verified: vedere la matrice V01 nel documento di stato.
 
-## Platform Support Matrix
+## Dipendenze JUCE
 
-| Feature | macOS | iOS | Windows | Linux | Android |
-|---------|-------|-----|---------|-------|---------|
-| Rendering pagine | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Navigazione pagine | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Zoom + Pan | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Ricerca testo | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Estrazione testo | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Export PDF | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Headless (no GUI) | ✓ | ✓ | ✓* | ✓* | ✓* |
-| Backend target | CoreGraphics + PDFKit | CoreGraphics + PDFKit | PDFium | PDFium | PDFium |
-| Setup extra | nessuno | nessuno | setup_pdfium | setup_pdfium | setup_pdfium |
+Il core dipende soltanto da `juce_graphics` per `juce::Image` e i tipi geometrici.
 
-`*` = richiede PDFium installato via `scripts/setup_pdfium.sh/.ps1` — implementazione in Fase 3.
+Per usare il widget:
+- aggiungere `juce_gui_basics` al target consumer;
+- non definire `AYRA_PDF_HEADLESS`.
 
-> **Stato reale (2 ottobre 2026):** la matrice sopra descrive il target v2, non una
-> certificazione runtime. `MacPdfRenderer` M01-M04 e' implementato e static-audited
-> (CoreGraphics + PDFKit) e `PdfDocument` e' ora collegato al renderer tramite factory/delega.
-> `PdfiumRenderer` e `PdfViewComponent` restano incompleti. Il solo path legacy
-> attualmente operativo e' **macOS/AppKit**; il legacy usa `NSView` e non costituisce
-> un'implementazione iOS. Build/test/CI restano external pending.
+Per uso headless:
+- definire `AYRA_PDF_HEADLESS=1`;
+- `juce_gui_basics` e `juce_gui_extra` non sono richiesti dal modulo.
 
----
+`juce_gui_extra` non e' una dipendenza di ayra_pdf.
 
-## Quick Start
-
-### PdfDocument — uso headless (engine puro)
+## Quick start - engine
 
 ```cpp
 #include <ayra_pdf/ayra_pdf.h>
 
-// --- Apertura da file ---
-ayra::PdfDocument doc;
-if (doc.open (juce::File ("/path/to/manual.pdf")))
+ayra::PdfDocument document;
+
+if (document.open (juce::File ("/path/manual.pdf")))
 {
-    int pages = doc.getPageCount();     // numero totale pagine
+    const int pageCount = document.getPageCount();
+    const auto page = document.getPage (0);
+    const auto image = document.renderPage (0, 2.0f);
+    const auto text = document.extractText (0);
+    const auto matches = document.findText ("channel", 0);
 
-    // Rendering a 2x per HiDPI
-    juce::Image img = doc.renderPage (0, 2.0f);
-
-    // Ricerca testo
-    auto results = doc.findText ("velocita");
-    for (const auto& r : results)
-    {
-        DBG ("pag " + juce::String (r.pageIndex) + " bounds: " + r.bounds.toString());
-    }
-
-    // Estrazione testo raw UTF-8
-    juce::String text = doc.extractText (0);
-
-    // Export
-    doc.save (juce::File ("/path/to/output.pdf"));
+    juce::MemoryBlock snapshot;
+    (void) document.saveToMemoryBlock (snapshot);
 }
-
-// --- Apertura da memoria ---
-juce::MemoryBlock block;
-// ... popola block ...
-doc.open (block.getData(), block.getSize());
 ```
 
-### PdfViewComponent — widget interattivo
+Le API engine usano indici pagina **0-based**. Le bounds di `PdfPage` e
+`PdfSearchResult` sono in PDF page space: 72 dpi, origine lower-left, Y-up.
+
+## Quick start - widget
 
 ```cpp
-#include <ayra_pdf/ayra_pdf.h>
-
-class MyEditor : public juce::AudioProcessorEditor
+class Viewer : public juce::Component
 {
 public:
-    MyEditor (MyProcessor& p) : AudioProcessorEditor (p)
+    Viewer()
     {
-        addAndMakeVisible (pdfView);
-
-        pdfView.loadDocument ("/path/to/manual.pdf");
-        pdfView.setPageNumber (1);
-
-        // Callback inline
-        pdfView.onPageChanged = [](int page) { DBG ("pagina: " + juce::String (page)); };
-
-        // Oppure Listener formale
-        pdfView.addListener (this);
-
-        setSize (800, 600);
+        addAndMakeVisible (pdf);
+        pdf.loadDocument ("/path/manual.pdf");
+        pdf.setPageNumber (1); // UI 1-based
+        pdf.setSearchQuery ("channel");
     }
 
-    void resized() override { pdfView.setBounds (getLocalBounds()); }
+    void resized() override
+    {
+        pdf.setBounds (getLocalBounds());
+    }
 
 private:
-    ayra::PdfViewComponent pdfView;
+    ayra::PdfViewComponent pdf;
 };
 ```
 
----
+Il widget supporta:
+- navigazione 1-based;
+- raster asincrono e coalesced;
+- zoom 0.1x..10x con anchor;
+- pan, wheel e pinch;
+- raster HiDPI separato dalle dimensioni logiche;
+- overlay search della pagina corrente;
+- LookAndFeel personalizzabile;
+- Listener + `std::function`.
 
-## API Reference
-
-### `ayra::PdfDocument` (engine headless)
-
-```cpp
-class PdfDocument
-{
-public:
-    // Apertura
-    [[nodiscard]] bool open (const juce::File& file) noexcept;
-    [[nodiscard]] bool open (const void* data, size_t sizeBytes) noexcept;
-    void close() noexcept;
-
-    // Stato
-    [[nodiscard]] bool isOpen() const noexcept;
-    [[nodiscard]] int  getPageCount() const noexcept;
-
-    // Rendering (non-const: puo' aggiornare lo stato interno del renderer)
-    // scale: 1.0 = 72dpi nativo, 2.0 = 144dpi HiDPI
-    [[nodiscard]] juce::Image renderPage (int pageIndex, float scale = 1.0f) noexcept;
-
-    // Navigazione / metadati
-    [[nodiscard]] PdfPage getPage (int pageIndex) const noexcept;
-
-    // Ricerca testo (message thread) — pageIndex = -1 cerca in tutto il documento
-    [[nodiscard]] juce::Array<PdfSearchResult> findText (const juce::String& query, int pageIndex = -1) noexcept;
-
-    // Estrazione testo UTF-8 (message thread)
-    [[nodiscard]] juce::String extractText (int pageIndex) noexcept;
-
-    // Serializzazione
-    [[nodiscard]] bool save (const juce::File& file) const noexcept;
-    [[nodiscard]] bool saveToMemoryBlock (juce::MemoryBlock& dest) const noexcept;
-};
-```
-
-### `ayra::PdfPage`
-
-```cpp
-struct PdfPage
-{
-    int                     index    {};      // 0-based
-    juce::Rectangle<float>  bounds   {};      // larghezza/altezza in punti PDF (1pt = 1/72")
-    int                     rotation {};      // 0, 90, 180, 270 gradi
-
-    // true se index >= 0 e bounds non vuote
-    [[nodiscard]] bool isValid() const noexcept;
-};
-```
-
-### `ayra::PdfSearchResult`
-
-```cpp
-struct PdfSearchResult
-{
-    int                    pageIndex {};      // pagina dove e' stato trovato (0-based)
-    juce::String           text      {};      // testo corrispondente
-    juce::Rectangle<float> bounds    {};      // bounding box in coordinate pagina
-};
-```
-
-### `ayra::PdfViewComponent` (widget — Fase 4)
-
-```cpp
-class PdfViewComponent : public juce::Component
-{
-public:
-    // Caricamento
-    void loadDocument (const juce::String& filePath);
-    void loadDocumentFromMemoryBlock (const void* data, int sizeInBytes);
-    void getMemoryBlockFromDocument (juce::MemoryBlock& dest);
-    void exportCurrentDocument (const juce::String& name, const juce::String& folderPath) const;
-
-    // Stato documento
-    [[nodiscard]] bool thereIsADocumentLoaded() const;
-    [[nodiscard]] int  getTotPagesNum() const;
-    [[nodiscard]] int  getCurrentPageOnScreen() const;
-
-    // Navigazione
-    void setPageNumber (int pageNumber);      // 1-based (display)
-
-    // Viewport
-    [[nodiscard]] float getCurrentPageZoom() const;
-    void setCurrentPageZoom (float zoom, juce::Point<float> handlePoint);
-    void setCurrentPageZoom (float zoom, juce::Point<int> handlePoint);
-
-    [[nodiscard]] juce::Point<float>     getCurrentPageTopLeftPosition() const;
-    void setCurrentPageTopLeftPosition (juce::Point<float> newPos);
-    void setCurrentPageTopLeftPosition (juce::Point<int> newPos);
-
-    [[nodiscard]] juce::Rectangle<float> getCurrentPageBounds() const;
-    [[nodiscard]] float getDocumentWidth()  const;
-    [[nodiscard]] float getDocumentHeight() const;
-
-    // Listener formale
-    struct Listener
-    {
-        virtual ~Listener() = default;
-        virtual void pdfPageChanged (PdfViewComponent*, int newPage) = 0;
-        virtual void pdfDocumentLoaded (PdfViewComponent*) {}
-        virtual void pdfDocumentClosed (PdfViewComponent*) {}
-    };
-    void addListener    (Listener*);
-    void removeListener (Listener*);
-
-    // Callback inline
-    std::function<void (int)>  onPageChanged;
-    std::function<void()>      onDocumentLoaded;
-    std::function<void()>      onDocumentClosed;
-};
-```
-
----
-
-## Current-only contract
-
-Il contratto corrente segue `AYRA_AI_ENGINEERING_MASTER.md`: **nessuna retrocompatibilita'
-Ayra preventiva**. Il vecchio `PDFComponent` e' presente solo perche' oggi e' il path
-funzionante mentre la v2 e' incompleta; non e' un'API da preservare.
-
-Al cutover:
-- `PdfViewComponent` sara' l'unico widget pubblico corrente;
-- `pdf_component/` verra' rimosso;
-- NON verra' introdotto `using PDFComponent = PdfViewComponent`;
-- non resteranno adapter, fallback o doppio percorso legacy/v2;
-- l'audit dei call-site AyraSoft verra' ripetuto nello stesso cambiamento.
-
-Lo stato e il piano canonico sono in `_docs/02_stato_attuale.md`.
-
----
-
-## Build Configuration
-
-### Projucer
-
-**Per tutti i sistemi — primo passo obbligatorio:**
-Aprire il progetto in Projucer → **Modules** → **+** → *Add a module from a specified folder* → selezionare `Juce Modules/ayra_pdf/`. La dipendenza `juce_gui_extra` viene aggiunta automaticamente.
-
-**macOS / iOS** — nessun setup third-party. CoreGraphics e PDFKit sono framework Apple di sistema e vengono dichiarati dal metadata del modulo.
-
-**Windows** (Fase 3 — PDFium):
-
-| Campo Projucer | Valore |
-|---|---|
-| Extra Library Search Paths | `path\to\ayra_pdf\third_party\pdfium\win` |
-| External Libraries to Link | `pdfium` |
-
-Distribuire `pdfium.dll` nella stessa cartella del plugin (post-build step).
-
-**Linux** (Fase 3 — PDFium):
-
-| Campo Projucer | Valore |
-|---|---|
-| Extra Library Search Paths | `/path/to/ayra_pdf/third_party/pdfium/linux` |
-| External Libraries to Link | `pdfium` |
-| Extra Linker Flags | `-Wl,-rpath,$$ORIGIN` |
-
-**Android** — configurare via CMakeLists.txt (vedi sezione CMake).
-
-> **Nota distribuzione macOS (dylib):** le release PDFium >= chromium/7000 distribuiscono `.dylib`
-> invece di `.a` su macOS. Se in futuro si abilita PDFium anche su Mac, il `.dylib` va bundled
-> nel `.vst3` package (`Contents/MacOS/`) con flag `-Wl,-rpath,@loader_path`. Vedi `SETUP.md`
-> sezione macOS per i dettagli.
-
-### CMake
-
-```cmake
-# macOS / iOS: nessuna configurazione aggiuntiva
-
-# Windows
-if (WIN32)
-    target_link_libraries (MyPlugin PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/win/pdfium.lib")
-    # Copiare pdfium.dll nella directory di output
-    add_custom_command (TARGET MyPlugin POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/win/pdfium.dll"
-        "$<TARGET_FILE_DIR:MyPlugin>")
-endif()
-
-# Linux
-if (UNIX AND NOT APPLE AND NOT ANDROID)
-    target_link_libraries (MyPlugin PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/linux/libpdfium.a")
-    target_link_options (MyPlugin PRIVATE "-Wl,-rpath,\$ORIGIN")
-endif()
-
-# Android
-if (ANDROID)
-    target_link_libraries (MyPlugin PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/Juce Modules/ayra_pdf/third_party/pdfium/android/${ANDROID_ABI}/libpdfium.so")
-endif()
-```
-
----
+Per condividere un documento tra consumer usare
+`setDocument(std::shared_ptr<PdfDocument>)`. Il documento condiviso non va mutato
+concorrentemente durante l'uso.
 
 ## PDFium
 
-[PDFium](https://pdfium.googlesource.com/pdfium/) e' il motore PDF open source di Google, estratto da Chromium. I binari precompilati usati da questo modulo provengono dal progetto [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) di Benoit Blanchon.
+Gli header pubblici sono vendorizzati in `third_party/pdfium/include/`. I binari per i target
+PDFium vengono preparati con gli script in `scripts/`.
 
-**Licenza:** Apache 2.0 — commercial-safe, nessun obbligo copyleft.
+PDFium non e' thread-safe: il backend serializza internamente tutte le chiamate FPDF con una
+lock process-wide. Il caller deve comunque rispettare il lifetime dell'oggetto renderer/documento.
 
-**Uso nei backend:**
-- macOS / iOS: non usato dal backend corrente; il backend usa CoreGraphics + PDFKit di sistema.
-- Windows / Linux / Android: PDFium e' il backend esclusivo.
+## Safety contract
 
-**Dimensione binari (stima):**
-- Static library (Linux/iOS): ~15-20 MB aggiuntivi al plugin
-- DLL dinamica (Windows): ~10-15 MB distribuita separatamente
-- macOS/iOS: 0 MB third-party per il backend corrente (CoreGraphics + PDFKit di sistema)
+- PDF esterni sono input non affidabili.
+- Dimensione documento, raster, testo, query e numero risultati sono bounded.
+- Save file/memory e' byte-preserving e transazionale.
+- Rendering/parsing/search non sono realtime-safe e non vanno chiamati dal processBlock.
+- Il widget non esegue parsing o raster dentro `paint()`.
 
-**Dove si trovano i file:**
+## Current-only
 
-| Percorso | In git | Descrizione |
-|----------|--------|-------------|
-| `third_party/pdfium/include/` | ✓ | Headers C dell'API pubblica PDFium |
-| `third_party/pdfium/mac/libpdfium.dylib` | ✗ | Fat binary universal (arm64+x86_64) — release >= chromium/7000 |
-| `third_party/pdfium/win/pdfium.dll` | ✗ | DLL Windows x64 |
-| `third_party/pdfium/win/pdfium.lib` | ✗ | Import library |
-| `third_party/pdfium/linux/libpdfium.a` | ✗ | Static x86_64 |
-| `third_party/pdfium/ios/libpdfium.a` | ✗ | Fat binary arm64+x86_64 sim |
-| `third_party/pdfium/android/arm64-v8a/` | ✗ | .so per ABI arm64 |
-| `third_party/pdfium/android/x86_64/` | ✗ | .so per ABI x86_64 |
+Il modulo supporta esclusivamente il contratto corrente. Il vecchio `PDFComponent` e il
+relativo codice platform-specific sono stati rimossi. Non esistono alias, adapter o fallback
+di compatibilita'.
 
-**Download:** eseguire `scripts/setup_pdfium.sh` (macOS/Linux) o `scripts/setup_pdfium.ps1` (Windows) dopo aver clonato il repository. Vedi `SETUP.md` per i dettagli.
+## Documentazione
 
-**Init PDFium (design Fase 3 — non ancora implementato):**
-`PdfiumRenderer` e' attualmente uno skeleton: tutti i metodi sono `jassertfalse` / `return {}`. Il design previsto per la Fase 3 e' chiamare `FPDF_InitLibrary()` una sola volta per processo (con ref-count) e `FPDF_DestroyLibrary()` quando il count torna a zero — vedi i `TODO: Fase 3` in `renderer/pdfium/ayra_PdfiumRenderer.cpp`. Nessuna init e' eseguita oggi.
-
-**Thread safety (design Fase 3):**
-PDFium non e' thread-safe a livello di documento. Il design previsto e' che ogni `PdfDocument` possieda il proprio `FPDF_DOCUMENT` senza condividere stato con altre istanze, cosi' che chiamate parallele su istanze distinte siano sicure. Non ancora implementato (Fase 3).
-
-**Aggiornamento versione:**
-Modificare `PDFIUM_VERSION` in `scripts/setup_pdfium.sh` / `setup_pdfium.ps1`, poi rieseguire lo script. I binari vengono scaricati da GitHub Releases di `pdfium-binaries`.
-
----
-
-## Headless Mode
-
-Il contratto H01 rende `AYRA_PDF_HEADLESS` una vera esclusione del layer GUI:
-il core dipende da `juce_graphics` (per `juce::Image`) ma non da `juce_gui_basics`
-o `juce_gui_extra`. In build GUI il progetto consumer deve includere/linkare
-`juce_gui_basics`; in headless non e' richiesto.
-
----
-
-## Fasi di Sviluppo
-
-La numerazione storica "Fase 1...7" resta nei documenti tecnici come provenance, ma non
-e' piu' la source of truth dell'avanzamento. Il piano operativo corrente usa microstep
-(`S00`, `M01`...`V01`) ed e' mantenuto esclusivamente in `_docs/02_stato_attuale.md`.
-
-Sintesi al 2026-10-02:
-- renderer Apple v2 M01-M04: **done (static)**;
-- `PdfDocument`: D02 **done (static)** su tutti i backend dichiarati;
-- renderer PDFium: P01-P03 **done (static)**;
-- `PdfViewComponent`: parziale;
-- legacy operativo: macOS/AppKit soltanto, destinato a rimozione current-only;
-- iOS v2: codice backend presente ma integrazione end-to-end da verificare esternamente;
-- build/test/CI: non eseguibili nell'ambiente AI corrente; verification esterna richiesta.
-
----
-
-## Licenza
-
-Copyright Ayra Soft. Tutti i diritti riservati.
-
-PDFium (usato su Windows/Linux/Android): Apache License 2.0.
-CoreGraphics e PDFKit (backend Apple): framework di sistema Apple, nessuna dipendenza third-party.
+- `_docs/01_architettura.md` - architettura corrente.
+- `_docs/02_stato_attuale.md` - stato/roadmap canonici.
+- `_docs/03_fase2_MacPdfRenderer.md` - dettaglio backend Apple.
+- `_docs/04_fase3_PdfiumRenderer.md` - dettaglio backend PDFium.
+- `_docs/05_fase4_PdfDocument.md` - facade engine.
+- `_docs/06_fase5_PdfViewComponent.md` - widget.
+- `_docs/07_deployment.md` - deployment.
+- `_docs/00_storico.md` - provenance storica, non normativa.

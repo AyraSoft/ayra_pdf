@@ -165,9 +165,8 @@ MyPlugin/
 Il backend corrente iOS usa **CoreGraphics + PDFKit**, entrambi framework di sistema dichiarati
 nel metadata JUCE del modulo. Non serve distribuire PDFium ne' una libreria statica aggiuntiva.
 
-Nota: l'integrazione iOS end-to-end del modulo resta **external pending** finche' il percorso
-legacy AppKit/macOS-specifico non viene eliminato in C01. Una eventuale variante futura basata
-su PDFium per iOS sarebbe un task architetturale separato e non fa parte del deployment corrente.
+L'integrazione iOS usa esclusivamente CoreGraphics + PDFKit: il percorso AppKit precedente e'
+stato rimosso. Build e runtime iOS restano comunque external pending fino a V01.
 
 ---
 
