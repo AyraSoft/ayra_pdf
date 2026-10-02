@@ -50,6 +50,16 @@ juce::MemoryBlock makePdfFixture()
     }
 
     const juce::String content (
+        "q\n"
+        "1 0 0 rg\n"
+        "40 60 20 20 re f\n"
+        "0 1 0 rg\n"
+        "300 60 20 20 re f\n"
+        "0 0 1 rg\n"
+        "40 520 20 20 re f\n"
+        "1 0 1 rg\n"
+        "300 520 20 20 re f\n"
+        "Q\n"
         "BT\n"
         "/F1 24 Tf\n"
         "60 100 Td\n"
@@ -103,6 +113,33 @@ bool rectangleApproximatelyEquals (juce::Rectangle<float> actual,
         && std::abs (actual.getY() - expected.getY()) <= epsilon
         && std::abs (actual.getWidth() - expected.getWidth()) <= epsilon
         && std::abs (actual.getHeight() - expected.getHeight()) <= epsilon;
+}
+
+bool colourApproximatelyEquals (juce::Colour actual,
+                                juce::Colour expected,
+                                int tolerance = 8)
+{
+    return std::abs (static_cast<int> (actual.getRed())
+                     - static_cast<int> (expected.getRed())) <= tolerance
+        && std::abs (static_cast<int> (actual.getGreen())
+                     - static_cast<int> (expected.getGreen())) <= tolerance
+        && std::abs (static_cast<int> (actual.getBlue())
+                     - static_cast<int> (expected.getBlue())) <= tolerance;
+}
+
+juce::Colour sampleDisplayRectCentre (const juce::Image& image,
+                                      juce::Rectangle<float> displayBounds)
+{
+    if (! image.isValid() || displayBounds.isEmpty())
+        return {};
+
+    const int x = juce::jlimit (0,
+                                image.getWidth() - 1,
+                                juce::roundToInt (displayBounds.getCentreX()));
+    const int y = juce::jlimit (0,
+                                image.getHeight() - 1,
+                                juce::roundToInt (displayBounds.getCentreY()));
+    return image.getPixelAt (x, y);
 }
 
 } // namespace
@@ -180,6 +217,29 @@ public:
             expect (image.isValid());
             expectEquals (image.getWidth(), juce::roundToInt (expectedSize.x));
             expectEquals (image.getHeight(), juce::roundToInt (expectedSize.y));
+
+            struct Marker
+            {
+                juce::Rectangle<float> pageBounds;
+                juce::Colour colour;
+            };
+
+            const Marker markers[]
+            {
+                { { 40.0f, 60.0f, 20.0f, 20.0f }, juce::Colours::red },
+                { { 300.0f, 60.0f, 20.0f, 20.0f }, juce::Colours::lime },
+                { { 40.0f, 520.0f, 20.0f, 20.0f }, juce::Colours::blue },
+                { { 300.0f, 520.0f, 20.0f, 20.0f }, juce::Colours::magenta }
+            };
+
+            for (const auto& marker : markers)
+            {
+                const auto displayBounds = info.getDisplayBounds (marker.pageBounds);
+                expect (! displayBounds.isEmpty());
+                expect (colourApproximatelyEquals (
+                    sampleDisplayRectCentre (image, displayBounds),
+                    marker.colour));
+            }
 
             const auto text = document.extractText (pageIndex);
             expect (text.contains ("HELLO AYRA PDF"));
