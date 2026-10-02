@@ -321,26 +321,26 @@ Quando `PdfViewComponent` e' completo e la verification esterna e' disponibile:
 
 ## Checklist Fase 5
 
-- [ ] W01: aggiungere `juce::Image cachedPageImage` e helper di invalidazione/notifica
+- [x] W01: cache/raster worker/lifetime/notifiche implementati
 - [ ] W02: aggiungere display scale HiDPI e stato drag
 - [ ] Implementare `invalidatePageCache()` — helper privato
 - [ ] Implementare `clampTopLeft()` — helper privato
-- [ ] Implementare `paint()` con cache e LookAndFeel
+- [x] W01: `paint()` solo compositing cache + LookAndFeel
 - [ ] Implementare `resized()` con aggiornamento DPI scale
-- [ ] Implementare `loadDocument()` con ownedDocument e notifica listeners
-- [ ] Implementare `loadDocumentFromMemoryBlock()` — analogo a loadDocument
-- [ ] Implementare `setPageNumber()` con reset pan e notifica listeners
+- [x] W01: load file transazionale + notifica lifetime-safe
+- [x] W01: load memory transazionale
+- [x] W01: navigazione 1-based + invalidazione cache
 - [ ] Implementare `setCurrentPageZoom()` con formula corretta anchor point (FIX v1)
 - [ ] Implementare `setCurrentPageTopLeftPosition()` con clamp
-- [ ] Implementare `getCurrentPageBounds()` in screen-space
-- [ ] Implementare `getDocumentWidth()` e `getDocumentHeight()`
-- [ ] Implementare `thereIsADocumentLoaded()` -> `currentDocument->isOpen()`
-- [ ] Implementare `getTotPagesNum()` -> `currentDocument->getPageCount()`
-- [ ] Implementare `exportCurrentDocument()` -> `currentDocument->save(...)`
-- [ ] Implementare `getMemoryBlockFromDocument()` -> `currentDocument->saveToMemoryBlock(...)`
+- [x] W01: bounds logici post-rotation via `PdfPage::getDisplaySize()`
+- [x] W01: dimensioni native visuali
+- [x] W01: stato viewer snapshot coerente
+- [x] W01: page count snapshot
+- [x] W01: export validato
+- [x] W01: save-to-memory
 - [ ] Implementare `mouseDown`, `mouseDrag`, `mouseWheelMove`, `mouseMagnify`
-- [ ] Implementare `setDocument()` (gia' parzialmente presente)
-- [ ] Verificare che `addListener`/`removeListener` funzionino
+- [x] W01: `setDocument(shared_ptr)` ownership asincrona esplicita
+- [x] W01: listener + std::function con BailOutChecker
 - [ ] Preparare il cutover current-only: nessun alias; rimozione legacy nel microstep C01
 - [ ] Test macOS: aprire file, navigare pagine, zoom pinch/scroll, pan drag
 - [ ] Audit call-site current-only: nessun consumer resta su `PDFComponent` prima di C01

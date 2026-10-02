@@ -46,8 +46,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **P02** | PDFium | Render + save file/memory | P01 | **done (static)** |
 | **P03** | PDFium | Extract/search con bounds esatti | P01 | **done (static)** |
 | **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | **done (static)** |
-| **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | **in progress** |
-| **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | pending |
+| **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | **done (static)** |
+| **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | **in progress** |
 | **H01** | Module contract | Rendere esplicito e corretto il contratto headless/dependencies JUCE | D02 | pending |
 | **C01** | Current-only cutover | Rimuovere `pdf_component/`, include legacy e ogni alias/fallback | W02,H01 | pending |
 | **V01** | Verification esterna | Build/test target dichiarati + sanitizer dove applicabile | C01 | external pending |
@@ -446,6 +446,60 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 
 ---
 
+## Esito W01
+
+**W01 (2026-10-02)**: il viewer carica file/memory in modo transazionale, usa
+`std::shared_ptr<PdfDocument>` per lifetime asincrono, mantiene numerazione pagina utente
+1-based e usa `PdfPage::getDisplaySize()` come owner canonico della display geometry
+post-rotation. `paint()` fa solo compositing: il raster gira su un pool condiviso del
+modulo e pubblica sul Message Thread tramite `RenderState` condiviso + generation atomica.
+Il raw owner del RenderState e' accessibile soltanto sul Message Thread; nessuna
+`WeakReference/SafePointer` attraversa thread. Listener formali precedono le callback
+`std::function` e usano `BailOutChecker`. Export filename e memory input sono validati.
+
+Il legacy macOS e' stato inoltre disambiguato da PDFKit rinominando la classe Objective-C
+custom in `AyraLegacyPDFView`, eliminando la collisione con `PDFKit.PDFView`.
+Build/component test GUI restano **external pending**.
+
+## Change Contract — W02 viewport / HiDPI / search
+
+**Task model**: completare interazione e visualizzazione avanzata senza spostare semantica PDF
+nel widget.
+
+**W02a - viewport/interazioni**
+- zoom bounded con anchor fisso in widget space;
+- pan/clamp deterministic;
+- mouse drag, wheel pan, Ctrl/Cmd+wheel zoom, pinch magnify;
+- raster scale = logical zoom x device scale; logical bounds restano invariati;
+- cambio display/scale invalida solo il raster, non page geometry.
+
+**W02b - search overlay**
+- il widget delega la ricerca a `PdfDocument::findText`;
+- conserva soltanto risultati derivati dell'ultima query come view state;
+- converte bounds PDF lower-left/Y-up -> display/widget space in un helper unico;
+- overlay disegnato tramite LookAndFeel dedicato;
+- nessun parser/search algorithm nel widget.
+
+**Invariants**:
+- zoom finito e bounded; no NaN/Inf nello stato;
+- pan non invalida il raster;
+- zoom/HiDPI invalida il raster tramite generation token;
+- clamp lascia sempre una porzione ragionevole della pagina visibile;
+- search results obsoleti vengono sostituiti atomicamente sul Message Thread;
+- page-space -> widget-space ha un solo owner/helper nel widget;
+- nessun PDF work pesante dentro `paint` o gesture callback.
+
+**Acceptance criteria W02**:
+- nessun `jassertfalse`/TODO resta nel widget;
+- zoom anchor matematicamente stabile;
+- HiDPI non cambia dimensioni logiche;
+- mouse/pinch/pan funzionano senza rerender per il solo pan;
+- overlay search usa bounds corretti anche con pagine ruotate;
+- diff audit statico completato;
+- GUI interaction/HiDPI/search visual test: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
@@ -460,7 +514,7 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
 | `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ✅ P01-P03 completi staticamente | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
-| `widgets/ayra_PdfViewComponent.cpp` | 🟠 W01 in progress; W02 pending | tutte | 5 |
+| `widgets/ayra_PdfViewComponent.cpp` | 🟠 W01 completo staticamente; W02 in progress | tutte | 5 |
 | `widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h` | ✅ completo | tutte | 1 |
 | `widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h/.cpp` | ✅ completo | tutte | 1 |
 | `pdf_component/PDFComponent.h/.cpp` | ✅ funzionante (LEGACY) | macOS | - |
