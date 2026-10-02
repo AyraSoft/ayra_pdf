@@ -230,6 +230,54 @@ public:
         expect (document.isOpen());
         expectEquals (document.getPageCount(), 4);
 
+       #ifndef AYRA_PDF_HEADLESS
+        beginTest ("Widget load/close notifications are balanced");
+
+        {
+            struct Listener final : PdfViewComponent::Listener
+            {
+                int loaded { 0 };
+                int closed { 0 };
+
+                void pdfPageChanged (PdfViewComponent*, int) override {}
+                void pdfDocumentLoaded (PdfViewComponent*) override { ++loaded; }
+                void pdfDocumentClosed (PdfViewComponent*) override { ++closed; }
+            };
+
+            auto shared = std::make_shared<PdfDocument>();
+            expect (shared->open (fixture.getData(), fixture.getSize()));
+
+            PdfViewComponent view;
+            Listener listener;
+            int callbackLoaded = 0;
+            int callbackClosed = 0;
+
+            view.addListener (&listener);
+            view.onDocumentLoaded = [&] { ++callbackLoaded; };
+            view.onDocumentClosed = [&] { ++callbackClosed; };
+
+            view.setDocument (shared);
+            expect (view.thereIsADocumentLoaded());
+            expectEquals (listener.loaded, 1);
+            expectEquals (callbackLoaded, 1);
+            expectEquals (listener.closed, 0);
+            expectEquals (callbackClosed, 0);
+
+            view.setDocument (nullptr);
+            expect (! view.thereIsADocumentLoaded());
+            expectEquals (view.getTotPagesNum(), -1);
+            expectEquals (view.getCurrentPageOnScreen(), -1);
+            expectEquals (listener.closed, 1);
+            expectEquals (callbackClosed, 1);
+
+            view.setDocument (nullptr);
+            expectEquals (listener.closed, 1);
+            expectEquals (callbackClosed, 1);
+
+            view.removeListener (&listener);
+        }
+       #endif
+
         for (int pageIndex = 0; pageIndex < 4; ++pageIndex)
         {
             const auto info = document.getPage (pageIndex);

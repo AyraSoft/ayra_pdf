@@ -71,6 +71,9 @@ public:
         /** Evento emesso dopo l'attivazione riuscita di un nuovo documento. */
         virtual void pdfDocumentLoaded (PdfViewComponent* comp) {}
 
+        /** Evento emesso quando un documento attivo viene chiuso esplicitamente. */
+        virtual void pdfDocumentClosed (PdfViewComponent* comp) {}
+
         /** Risultati highlight della pagina corrente aggiornati. */
         virtual void pdfSearchResultsChanged (PdfViewComponent* comp, int resultCount) {}
     };
@@ -157,6 +160,7 @@ public:
 
     std::function<void (int)> onPageChanged;
     std::function<void()>      onDocumentLoaded;
+    std::function<void()>      onDocumentClosed;
     std::function<void (int)>  onSearchResultsChanged;
 
     //==============================================================================
@@ -195,6 +199,7 @@ private:
                                                             juce::Rectangle<float> pdfBounds) const;
 
     void notifyDocumentLoaded();
+    void notifyDocumentClosed();
     void notifyPageChanged();
     void notifySearchResultsChanged();
 

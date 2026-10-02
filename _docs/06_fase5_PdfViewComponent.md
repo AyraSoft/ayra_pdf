@@ -84,6 +84,12 @@ cio' che serve.
 Listener formali prima delle `std::function`.
 Le notifiche sincrone usano `Component::BailOutChecker`.
 
+Il contratto include:
+- document loaded dopo una attivazione riuscita;
+- document closed una sola volta quando `setDocument(nullptr)` chiude un documento attivo;
+- page changed sulla navigazione;
+- search results changed sulla publication degli highlight.
+
 ## Compatibilita' API
 
 Il precedente percorso di implementazione `PDFComponent` e' stato rimosso. Il nome

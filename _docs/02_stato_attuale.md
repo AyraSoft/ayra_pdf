@@ -73,7 +73,7 @@ renderer concreti.
 - zoom, pan, wheel, pinch;
 - HiDPI;
 - overlay search ruotato correttamente;
-- LookAndFeel e doppia API eventi.
+- LookAndFeel e doppia API eventi, incluso document loaded/closed.
 
 ### Headless
 

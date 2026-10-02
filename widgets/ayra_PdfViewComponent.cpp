@@ -522,6 +522,8 @@ void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
 
     if (doc == nullptr)
     {
+        const bool hadDocument = thereIsADocumentLoaded();
+
         if (renderState != nullptr)
             renderState->cancelWork();
 
@@ -535,6 +537,10 @@ void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
         searchQuery.clear();
         searchResults.clearQuick();
         repaint();
+
+        if (hadDocument)
+            notifyDocumentClosed();
+
         return;
     }
 
@@ -1014,6 +1020,21 @@ void PdfViewComponent::notifyDocumentLoaded()
 
     if (onDocumentLoaded)
         onDocumentLoaded();
+}
+
+void PdfViewComponent::notifyDocumentClosed()
+{
+    juce::Component::BailOutChecker checker (this);
+    listeners.callChecked (checker, [this] (Listener& listener)
+    {
+        listener.pdfDocumentClosed (this);
+    });
+
+    if (checker.shouldBailOut())
+        return;
+
+    if (onDocumentClosed)
+        onDocumentClosed();
 }
 
 void PdfViewComponent::notifyPageChanged()
