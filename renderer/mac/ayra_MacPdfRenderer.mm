@@ -24,16 +24,14 @@ namespace ayra
 namespace
 {
 
-static void releasePdfKitDocument (PDFDocument*& document) noexcept
+static void releasePdfKitDocument (PDFDocument* document) noexcept
 {
-    if (document == nil)
-        return;
-
    #if ! __has_feature(objc_arc)
-    [document release];
+    if (document != nil)
+        [document release];
+   #else
+    juce::ignoreUnused (document);
    #endif
-
-    document = nil;
 }
 
 [[nodiscard]] bool fitsFloat (CGFloat value) noexcept
@@ -192,12 +190,14 @@ struct MacPdfRenderer::Impl
                 && [newTextDocument pageCount] != CGPDFDocumentGetNumberOfPages (document))
             {
                 releasePdfKitDocument (newTextDocument);
+                newTextDocument = nil;
             }
         }
         @catch (NSException* exception)
         {
             juce::ignoreUnused (exception);
             releasePdfKitDocument (newTextDocument);
+            newTextDocument = nil;
         }
 
         if (newTextDocument == nil)
@@ -214,6 +214,7 @@ struct MacPdfRenderer::Impl
     void resetTextDocument() noexcept
     {
         releasePdfKitDocument (textDocument);
+        textDocument = nil;
 
         if (textData != nullptr)
         {
