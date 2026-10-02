@@ -52,6 +52,11 @@ bool PdfDocument::saveToMemoryBlock (juce::MemoryBlock& destData) const noexcept
     return renderer != nullptr && renderer->saveToMemory (destData);
 }
 
+bool PdfDocument::sourceBytesEqualFile (const juce::File& file) const noexcept
+{
+    return renderer != nullptr && renderer->sourceBytesEqualFile (file);
+}
+
 void PdfDocument::close() noexcept
 {
     if (renderer != nullptr)

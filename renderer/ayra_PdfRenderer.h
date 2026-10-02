@@ -60,6 +60,11 @@ public:
      */
     [[nodiscard]] virtual bool saveToMemory (juce::MemoryBlock& destData) const noexcept = 0;
 
+    /** Confronta byte-per-byte lo snapshot sorgente owned con un file.
+     *  Nessun hash/fingerprint viene usato come prova d'identita'.
+     */
+    [[nodiscard]] virtual bool sourceBytesEqualFile (const juce::File& file) const noexcept = 0;
+
     /** Chiude il documento e rilascia le risorse native. */
     virtual void close() noexcept = 0;
 

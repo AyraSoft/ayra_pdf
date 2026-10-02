@@ -81,6 +81,11 @@ public:
      */
     [[nodiscard]] bool saveToMemoryBlock (juce::MemoryBlock& destData) const noexcept;
 
+    /** Verifica identita' byte-esatta tra lo snapshot sorgente del documento
+     *  e il file indicato. Non usa hash/fingerprint come prova d'identita'.
+     */
+    [[nodiscard]] bool sourceBytesEqualFile (const juce::File& file) const noexcept;
+
     /** Chiude il documento e rilascia le risorse del renderer.
      *  Dopo questa chiamata isOpen() ritorna false.
      */

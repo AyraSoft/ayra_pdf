@@ -53,6 +53,7 @@ public:
     [[nodiscard]] bool loadFromMemory (const void* data, size_t sizeBytes) noexcept override;
     [[nodiscard]] bool saveToFile     (const juce::File& destFile)   const noexcept override;
     [[nodiscard]] bool saveToMemory   (juce::MemoryBlock& destData)  const noexcept override;
+    [[nodiscard]] bool sourceBytesEqualFile (const juce::File& file) const noexcept override;
     void               close          ()                                   noexcept override;
 
     [[nodiscard]] bool                         isLoaded    ()              const noexcept override;

@@ -18,6 +18,8 @@
 
 #if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
 
+#include "../ayra_PdfByteSource.h"
+
 namespace ayra
 {
 
@@ -240,7 +242,7 @@ private:
 struct PdfiumRenderer::Impl
 {
     FPDF_DOCUMENT document { nullptr };
-    std::unique_ptr<juce::MemoryBlock> pdfData;
+    std::shared_ptr<const juce::MemoryBlock> pdfData;
 
     void closeUnlocked() noexcept
     {
@@ -253,7 +255,7 @@ struct PdfiumRenderer::Impl
         pdfData.reset();
     }
 
-    [[nodiscard]] bool loadOwnedData (std::unique_ptr<juce::MemoryBlock> newData) noexcept
+    [[nodiscard]] bool loadOwnedData (std::shared_ptr<const juce::MemoryBlock> newData) noexcept
     {
         if (newData == nullptr || newData->getSize() == 0)
             return false;
@@ -293,48 +295,8 @@ PdfiumRenderer::~PdfiumRenderer()
 
 bool PdfiumRenderer::loadFromFile (const juce::File& file) noexcept
 {
-    try
-    {
-        auto input = file.createInputStream();
-
-        if (input == nullptr)
-            return false;
-
-        const auto length = input->getTotalLength();
-
-        if (length <= 0
-            || static_cast<std::uint64_t> (length) > detail::maxDocumentBytes
-            || length > static_cast<juce::int64> (std::numeric_limits<int>::max()))
-        {
-            return false;
-        }
-
-        auto newData = std::make_unique<juce::MemoryBlock>();
-        newData->setSize (static_cast<size_t> (length), false);
-
-        auto* destination = static_cast<std::uint8_t*> (newData->getData());
-        int bytesRemaining = static_cast<int> (length);
-        size_t offset = 0;
-
-        while (bytesRemaining > 0)
-        {
-            constexpr int maxReadChunk = 1024 * 1024;
-            const int requested = std::min (bytesRemaining, maxReadChunk);
-            const int bytesRead = input->read (destination + offset, requested);
-
-            if (bytesRead <= 0 || bytesRead > requested)
-                return false;
-
-            offset += static_cast<size_t> (bytesRead);
-            bytesRemaining -= bytesRead;
-        }
-
-        return impl->loadOwnedData (std::move (newData));
-    }
-    catch (const std::bad_alloc&)
-    {
-        return false;
-    }
+    const auto newData = detail::readOwnedPdfFileBytes (file);
+    return newData != nullptr && impl->loadOwnedData (newData);
 }
 
 bool PdfiumRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcept
@@ -347,8 +309,8 @@ bool PdfiumRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
     try
     {
-        auto newData = std::make_unique<juce::MemoryBlock>();
-        newData->replaceAll (data, sizeBytes);
+        auto mutableData = std::make_shared<juce::MemoryBlock> (data, sizeBytes);
+        std::shared_ptr<const juce::MemoryBlock> newData = std::move (mutableData);
         return impl->loadOwnedData (std::move (newData));
     }
     catch (const std::bad_alloc&)
@@ -359,21 +321,26 @@ bool PdfiumRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
 bool PdfiumRenderer::saveToFile (const juce::File& destFile) const noexcept
 {
-    try
+    std::shared_ptr<const juce::MemoryBlock> snapshot;
+
     {
-        juce::MemoryBlock snapshot;
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
 
+        if (impl->document == nullptr || impl->pdfData == nullptr
+            || impl->pdfData->getSize() == 0)
         {
-            auto& state = getPdfiumProcessState();
-            const juce::ScopedLock lock (state.apiLock);
-
-            if (impl->document == nullptr || impl->pdfData == nullptr || impl->pdfData->getSize() == 0)
-                return false;
-
-            snapshot.replaceAll (impl->pdfData->getData(), impl->pdfData->getSize());
+            return false;
         }
 
-        return destFile.replaceWithData (snapshot.getData(), snapshot.getSize());
+        snapshot = impl->pdfData;
+    }
+
+    try
+    {
+        return destFile.replaceWithData (
+            snapshot->getData(),
+            snapshot->getSize());
     }
     catch (const std::bad_alloc&)
     {
@@ -383,20 +350,26 @@ bool PdfiumRenderer::saveToFile (const juce::File& destFile) const noexcept
 
 bool PdfiumRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 {
-    try
+    std::shared_ptr<const juce::MemoryBlock> snapshot;
+
     {
-        juce::MemoryBlock replacement;
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
 
+        if (impl->document == nullptr || impl->pdfData == nullptr
+            || impl->pdfData->getSize() == 0)
         {
-            auto& state = getPdfiumProcessState();
-            const juce::ScopedLock lock (state.apiLock);
-
-            if (impl->document == nullptr || impl->pdfData == nullptr || impl->pdfData->getSize() == 0)
-                return false;
-
-            replacement.replaceAll (impl->pdfData->getData(), impl->pdfData->getSize());
+            return false;
         }
 
+        snapshot = impl->pdfData;
+    }
+
+    try
+    {
+        juce::MemoryBlock replacement (
+            snapshot->getData(),
+            snapshot->getSize());
         destData = std::move (replacement);
         return true;
     }
@@ -404,6 +377,26 @@ bool PdfiumRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
     {
         return false;
     }
+}
+
+bool PdfiumRenderer::sourceBytesEqualFile (const juce::File& file) const noexcept
+{
+    std::shared_ptr<const juce::MemoryBlock> snapshot;
+
+    {
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
+
+        if (impl->document == nullptr || impl->pdfData == nullptr)
+            return false;
+
+        snapshot = impl->pdfData;
+    }
+
+    return detail::sourceBytesEqualFile (
+        file,
+        snapshot->getData(),
+        snapshot->getSize());
 }
 
 void PdfiumRenderer::close() noexcept

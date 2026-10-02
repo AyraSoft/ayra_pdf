@@ -18,6 +18,8 @@
 
 #if JUCE_MAC || JUCE_IOS
 
+#include "../ayra_PdfByteSource.h"
+
 namespace ayra
 {
 
@@ -153,7 +155,7 @@ struct MacPdfRenderer::Impl
 
     CGPDFDocumentRef document { nullptr };        ///< Documento CoreGraphics corrente
     CGDataProviderRef provider { nullptr };       ///< Provider mantenuto vivo quanto il documento
-    std::unique_ptr<juce::MemoryBlock> pdfData;   ///< Backing storage per load-from-memory
+    std::shared_ptr<const juce::MemoryBlock> pdfData; ///< Snapshot byte immutabile owned
 
     PDFDocument* textDocument { nil };             ///< Cache derivata PDFKit per text/search
     CFDataRef textData { nullptr };                ///< Byte snapshot posseduti dalla cache PDFKit
@@ -238,20 +240,18 @@ MacPdfRenderer::~MacPdfRenderer()
 
 bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
 {
+    const auto newPdfData = detail::readOwnedPdfFileBytes (file);
+
+    if (newPdfData == nullptr)
+        return false;
+
     const juce::ScopedLock lock (impl->apiLock);
-    if (!file.existsAsFile())
-        return false;
 
-    const auto fileSize = file.getSize();
-
-    if (fileSize <= 0
-        || static_cast<std::uint64_t> (fileSize) > detail::maxDocumentBytes)
-    {
-        return false;
-    }
-
-    const auto path = file.getFullPathName();
-    CGDataProviderRef provider = CGDataProviderCreateWithFilename (path.toRawUTF8());
+    CGDataProviderRef provider = CGDataProviderCreateWithData (
+        nullptr,
+        newPdfData->getData(),
+        newPdfData->getSize(),
+        nullptr);
 
     if (provider == nullptr)
         return false;
@@ -264,8 +264,8 @@ bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
         return false;
     }
 
-    // Commit transazionale: un load fallito lascia intatto il documento corrente.
     close();
+    impl->pdfData = newPdfData;
     impl->provider = provider;
     impl->document = newDocument;
     return true;
@@ -281,8 +281,8 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
     try
     {
-        auto newPdfData = std::make_unique<juce::MemoryBlock>();
-        newPdfData->replaceAll (data, sizeBytes);
+        auto mutableData = std::make_shared<juce::MemoryBlock> (data, sizeBytes);
+        std::shared_ptr<const juce::MemoryBlock> newPdfData = std::move (mutableData);
 
         const juce::ScopedLock lock (impl->apiLock);
 
@@ -318,20 +318,25 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
 bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
 {
-    const juce::ScopedLock lock (impl->apiLock);
-    if (impl->document == nullptr || impl->provider == nullptr)
-        return false;
+    std::shared_ptr<const juce::MemoryBlock> snapshot;
 
-    ProviderDataSnapshot snapshot (impl->provider);
+    {
+        const juce::ScopedLock lock (impl->apiLock);
 
-    if (!snapshot.isValid())
-        return false;
+        if (impl->document == nullptr || impl->pdfData == nullptr
+            || impl->pdfData->getSize() == 0)
+        {
+            return false;
+        }
+
+        snapshot = impl->pdfData;
+    }
 
     try
     {
-        // juce::File::replaceWithData writes through a temporary file before
-        // replacing the destination, so a failed write does not truncate it.
-        return destFile.replaceWithData (snapshot.getData(), snapshot.getSize());
+        return destFile.replaceWithData (
+            snapshot->getData(),
+            snapshot->getSize());
     }
     catch (const std::bad_alloc&)
     {
@@ -341,20 +346,25 @@ bool MacPdfRenderer::saveToFile (const juce::File& destFile) const noexcept
 
 bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 {
-    const juce::ScopedLock lock (impl->apiLock);
-    if (impl->document == nullptr || impl->provider == nullptr)
-        return false;
+    std::shared_ptr<const juce::MemoryBlock> snapshot;
 
-    ProviderDataSnapshot snapshot (impl->provider);
+    {
+        const juce::ScopedLock lock (impl->apiLock);
 
-    if (!snapshot.isValid())
-        return false;
+        if (impl->document == nullptr || impl->pdfData == nullptr
+            || impl->pdfData->getSize() == 0)
+        {
+            return false;
+        }
+
+        snapshot = impl->pdfData;
+    }
 
     try
     {
-        // Transactional destination semantics: build the replacement first, then
-        // publish it only after the allocation/copy has completed successfully.
-        juce::MemoryBlock replacement (snapshot.getData(), snapshot.getSize());
+        juce::MemoryBlock replacement (
+            snapshot->getData(),
+            snapshot->getSize());
         destData = std::move (replacement);
         return true;
     }
@@ -362,6 +372,25 @@ bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
     {
         return false;
     }
+}
+
+bool MacPdfRenderer::sourceBytesEqualFile (const juce::File& file) const noexcept
+{
+    std::shared_ptr<const juce::MemoryBlock> snapshot;
+
+    {
+        const juce::ScopedLock lock (impl->apiLock);
+
+        if (impl->document == nullptr || impl->pdfData == nullptr)
+            return false;
+
+        snapshot = impl->pdfData;
+    }
+
+    return detail::sourceBytesEqualFile (
+        file,
+        snapshot->getData(),
+        snapshot->getSize());
 }
 
 void MacPdfRenderer::close() noexcept
