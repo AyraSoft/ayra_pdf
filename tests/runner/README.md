@@ -58,3 +58,8 @@ cmake -S tests/runner -B build/pdf-core-asan \
 Supported values are `address`, `undefined`, and `thread`. Keep separate build directories; ASan
 and TSan are not combined into one target. MSVC-specific sanitizer configuration remains an external
 toolchain concern rather than being approximated with incompatible flags.
+
+
+GUI-capable runner builds define `JUCE_MODAL_LOOPS_PERMITTED=1` only for the contract target. This
+is required solely to drain `AsyncUpdater` publications deterministically in teardown/search tests;
+headless builds do not enable modal loops.

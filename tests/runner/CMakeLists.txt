@@ -52,6 +52,11 @@ if(AYRA_PDF_TEST_HEADLESS)
     target_compile_definitions(AyraPdfCoreContractTests PRIVATE
         AYRA_PDF_HEADLESS=1)
 else()
+    # GUI/widget contract tests drain AsyncUpdater publications through
+    # MessageManager::runDispatchLoopUntil(), which JUCE exposes only when
+    # modal loops are explicitly permitted for the test target.
+    target_compile_definitions(AyraPdfCoreContractTests PRIVATE
+        JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(AyraPdfCoreContractTests PRIVATE
         juce::juce_gui_basics)
 endif()
