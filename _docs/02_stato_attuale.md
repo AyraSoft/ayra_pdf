@@ -174,7 +174,8 @@ Il test genera in memoria una fixture PDF ASCII con:
 
 Copre geometry pura, visible box, open/render/search/extract, save byte-preserving,
 load transazionale, budget oversize, destination-on-failure, chiamate concorrenti sulla
-stessa istanza e (su target PDFium) lavoro concorrente multi-instance sotto lock process-wide. Lo stress puro init/destroy 0->1->0 resta nel runbook V01 esterno.
+stessa istanza e (su target PDFium) lavoro concorrente multi-instance sotto lock process-wide,
+inclusi batch sequenziali init/destroy in cui il renderer count torna 0 tra un batch e il successivo.
 Non e' stato eseguito in questa sessione.
 
 ## PDFium provisioning

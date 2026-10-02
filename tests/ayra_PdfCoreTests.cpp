@@ -565,6 +565,38 @@ public:
 
         expectEquals (completedIterations.load (std::memory_order_relaxed),
                       workerCount * iterationsPerWorker);
+
+        beginTest ("PDFium library reinitializes after zero live instances");
+
+        constexpr int lifecycleBatches = 8;
+        bool lifecycleOk = true;
+
+        for (int batch = 0; batch < lifecycleBatches; ++batch)
+        {
+            {
+                PdfDocument first;
+
+                if (!first.open (fixture.getData(), fixture.getSize())
+                    || !first.renderPage (batch % 4, 0.25f).isValid())
+                {
+                    lifecycleOk = false;
+                }
+            }
+
+            // At this point no PdfDocument from this batch is alive, so the
+            // process-wide renderer count must have returned to zero.
+            {
+                PdfDocument second;
+
+                if (!second.open (fixture.getData(), fixture.getSize())
+                    || second.findText ("AYRA", batch % 4).size() != 1)
+                {
+                    lifecycleOk = false;
+                }
+            }
+        }
+
+        expect (lifecycleOk);
        #endif
 
         beginTest ("Invalid indexes and raster scales fail closed");

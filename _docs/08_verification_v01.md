@@ -68,7 +68,7 @@ Copertura fixture generata in memoria:
 3. core unit test;
 4. color marker BGRA;
 5. Unicode/search;
-6. multi-instance stress PDFium, includendo cicli in cui nessuna istanza resta viva tra un batch e il successivo;
+6. multi-instance stress PDFium, includendo il test automatico di re-init dopo zero istanze vive;
 7. save equality;
 8. malformed/truncated PDF.
 
