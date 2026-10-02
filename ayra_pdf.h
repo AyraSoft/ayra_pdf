@@ -25,7 +25,7 @@
   website:
   license:              Copyright. All Rights Reserved.
 
-  dependencies:         juce_gui_extra
+  dependencies:         juce_graphics
   OSXFrameworks:        CoreGraphics PDFKit
   iOSFrameworks:        CoreGraphics PDFKit
 
@@ -35,7 +35,15 @@
 #pragma once
 #define JUCE_AYRA_PDF_H_INCLUDED
 
-#include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_graphics/juce_graphics.h>
+
+#ifndef AYRA_PDF_HEADLESS
+  #if ! defined (JUCE_MODULE_AVAILABLE_juce_gui_basics) || ! JUCE_MODULE_AVAILABLE_juce_gui_basics
+    #error "ayra_pdf GUI requires juce_gui_basics. Add it to the consumer target or define AYRA_PDF_HEADLESS."
+  #endif
+
+  #include <juce_gui_basics/juce_gui_basics.h>
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -64,10 +72,9 @@
   #include "widgets/ayra_PdfViewComponent.h"
   #include "widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h"
   #include "widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h"
-#endif
 
-//==============================================================================
-// Legacy AppKit temporaneo durante la sostituzione del widget. Non e' disponibile su iOS.
-#if JUCE_MAC
-  #include "pdf_component/PDFComponent.h"
+  // Legacy AppKit temporaneo fino al cutover current-only C01.
+  #if JUCE_MAC
+    #include "pdf_component/PDFComponent.h"
+  #endif
 #endif

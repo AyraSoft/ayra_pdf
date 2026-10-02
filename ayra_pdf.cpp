@@ -35,7 +35,7 @@
   #include <CoreGraphics/CoreGraphics.h>
   #import <PDFKit/PDFKit.h>
 
-  #if JUCE_MAC
+  #if JUCE_MAC && ! defined (AYRA_PDF_HEADLESS)
     #include <Cocoa/Cocoa.h>
     #include "pdf_component/Mac_PDF_core/PDFView.m"
     #include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
