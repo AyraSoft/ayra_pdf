@@ -24,6 +24,7 @@
 
 #include <cmath>
 #include <limits>
+#include <memory>
 
 namespace ayra
 {
@@ -34,8 +35,9 @@ namespace ayra
 
 struct MacPdfRenderer::Impl
 {
-    CGPDFDocumentRef document { nullptr };  ///< Documento CoreGraphics corrente
-    juce::MemoryBlock pdfData;              ///< Backing storage per documenti caricati da memoria
+    CGPDFDocumentRef document { nullptr };        ///< Documento CoreGraphics corrente
+    CGDataProviderRef provider { nullptr };       ///< Provider mantenuto vivo quanto il documento
+    std::unique_ptr<juce::MemoryBlock> pdfData;   ///< Backing storage per load-from-memory
 };
 
 // ======================================================================
@@ -62,13 +64,16 @@ bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
         return false;
 
     CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
-    CGDataProviderRelease (provider);
 
     if (newDocument == nullptr)
+    {
+        CGDataProviderRelease (provider);
         return false;
+    }
 
     // Commit transazionale: un load fallito lascia intatto il documento corrente.
     close();
+    impl->provider = provider;
     impl->document = newDocument;
     return true;
 }
@@ -78,27 +83,30 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
     if (data == nullptr || sizeBytes == 0)
         return false;
 
-    juce::MemoryBlock newPdfData;
-    newPdfData.replaceAll (data, sizeBytes);
+    auto newPdfData = std::make_unique<juce::MemoryBlock>();
+    newPdfData->replaceAll (data, sizeBytes);
 
     CGDataProviderRef provider = CGDataProviderCreateWithData (nullptr,
-                                                               newPdfData.getData(),
-                                                               newPdfData.getSize(),
+                                                               newPdfData->getData(),
+                                                               newPdfData->getSize(),
                                                                nullptr);
 
     if (provider == nullptr)
         return false;
 
     CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
-    CGDataProviderRelease (provider);
 
     if (newDocument == nullptr)
+    {
+        CGDataProviderRelease (provider);
         return false;
+    }
 
-    // Il provider del documento puo' leggere lazy dal buffer: trasferiamo il backing
-    // storage solo dopo che il nuovo documento e' stato creato con successo.
+    // Provider e backing storage restano entrambi owned dal renderer per tutta la vita
+    // del documento. Nessun puntatore ai byte sopravvive al proprio owner.
     close();
     impl->pdfData = std::move (newPdfData);
+    impl->provider = provider;
     impl->document = newDocument;
     return true;
 }
@@ -122,6 +130,13 @@ void MacPdfRenderer::close() noexcept
         CGPDFDocumentRelease (impl->document);
         impl->document = nullptr;
     }
+
+    if (impl->provider != nullptr)
+    {
+        CGDataProviderRelease (impl->provider);
+        impl->provider = nullptr;
+    }
+
     impl->pdfData.reset();
 }
 
@@ -147,11 +162,12 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
     if (impl->document == nullptr || pageIndex < 0)
         return {};
 
-    const auto pageNumber = static_cast<size_t> (pageIndex) + 1u;
-    const auto pageCount = CGPDFDocumentGetNumberOfPages (impl->document);
+    const int addressablePageCount = getPageCount();
 
-    if (pageNumber > pageCount)
+    if (pageIndex >= addressablePageCount)
         return {};
+
+    const auto pageNumber = static_cast<size_t> (pageIndex) + 1u;
 
     CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, pageNumber);
 
@@ -160,14 +176,16 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
     const auto mediaBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
 
-    const auto finite = [] (CGFloat value) noexcept
+    const auto fitsFloat = [] (CGFloat value) noexcept
     {
-        return std::isfinite (static_cast<double> (value));
+        const auto d = static_cast<double> (value);
+        constexpr auto maxFloat = static_cast<double> (std::numeric_limits<float>::max());
+        return std::isfinite (d) && d >= -maxFloat && d <= maxFloat;
     };
 
     if (CGRectIsNull (mediaBox) || CGRectIsEmpty (mediaBox) || CGRectIsInfinite (mediaBox)
-        || !finite (mediaBox.origin.x) || !finite (mediaBox.origin.y)
-        || !finite (mediaBox.size.width) || !finite (mediaBox.size.height))
+        || !fitsFloat (mediaBox.origin.x) || !fitsFloat (mediaBox.origin.y)
+        || !fitsFloat (mediaBox.size.width) || !fitsFloat (mediaBox.size.height))
     {
         return {};
     }
