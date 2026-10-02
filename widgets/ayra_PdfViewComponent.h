@@ -41,7 +41,8 @@ public:
         backgroundColourId     = 0x3AB0001,
         pageColourId           = 0x3AB0002,
         shadowColourId         = 0x3AB0003,
-        noDocumentTextColourId = 0x3AB0004
+        noDocumentTextColourId = 0x3AB0004,
+        searchHighlightColourId = 0x3AB0005
     };
 
     /** Hook LookAndFeel del viewer.
@@ -56,6 +57,7 @@ public:
         virtual void drawPdfViewNoDocument (juce::Graphics&, int width, int height, PdfViewComponent&);
         virtual void drawPdfViewPageBackground (juce::Graphics&, juce::Rectangle<float> pageBounds, PdfViewComponent&);
         virtual void drawPdfViewPageShadow (juce::Graphics&, juce::Rectangle<float> pageBounds, PdfViewComponent&);
+        virtual void drawPdfViewSearchHighlight (juce::Graphics&, juce::Rectangle<float> highlightBounds, PdfViewComponent&);
     };
 
     class Listener
@@ -68,6 +70,9 @@ public:
 
         /** Evento emesso dopo l'attivazione riuscita di un nuovo documento. */
         virtual void pdfDocumentLoaded (PdfViewComponent* comp) {}
+
+        /** Risultati highlight della pagina corrente aggiornati. */
+        virtual void pdfSearchResultsChanged (PdfViewComponent* comp, int resultCount) {}
     };
 
     PdfViewComponent();
@@ -131,17 +136,36 @@ public:
     void setDocument (std::shared_ptr<PdfDocument> doc);
 
     //==============================================================================
+    // SEARCH OVERLAY
+
+    /** Imposta la query evidenziata sulla pagina corrente. Stringa vuota = clear. */
+    void setSearchQuery (const juce::String& query);
+
+    void clearSearch();
+
+    [[nodiscard]] int getSearchResultCount() const noexcept;
+
+    //==============================================================================
     // EVENTI
 
     void addListener (Listener* l);
     void removeListener (Listener* l);
 
     std::function<void (int)> onPageChanged;
-    std::function<void()>     onDocumentLoaded;
+    std::function<void()>      onDocumentLoaded;
+    std::function<void (int)>  onSearchResultsChanged;
 
     //==============================================================================
     void paint (juce::Graphics& g) override;
     void resized() override;
+    void moved() override;
+    void parentHierarchyChanged() override;
+
+    void mouseDown (const juce::MouseEvent& event) override;
+    void mouseDrag (const juce::MouseEvent& event) override;
+    void mouseWheelMove (const juce::MouseEvent& event,
+                         const juce::MouseWheelDetails& wheel) override;
+    void mouseMagnify (const juce::MouseEvent& event, float scaleFactor) override;
 
 private:
     LookAndFeelMethods& getLAF();
@@ -154,8 +178,21 @@ private:
     void invalidatePageCache();
     void requestPageRender();
     void publishPageRender (std::uint64_t generation, PdfPage page, juce::Image image);
+
+    void invalidateSearchResults();
+    void requestSearchResults();
+    void publishSearchResults (std::uint64_t generation,
+                               int pageIndex,
+                               juce::Array<PdfSearchResult> results);
+
+    void updateRasterDeviceScale();
+    void clampTopLeft();
+    [[nodiscard]] juce::Rectangle<float> pdfBoundsToWidget (const PdfPage& page,
+                                                            juce::Rectangle<float> pdfBounds) const;
+
     void notifyDocumentLoaded();
     void notifyPageChanged();
+    void notifySearchResultsChanged();
 
     std::shared_ptr<PdfDocument> currentDocument;
     std::shared_ptr<RenderState> renderState;
@@ -164,9 +201,14 @@ private:
     PdfPage cachedPageInfo;
     int currentPageCount { 0 };
 
-    float              currentZoom { 1.0f };
+    juce::String searchQuery;
+    juce::Array<PdfSearchResult> searchResults;
+
+    float currentZoom { 1.0f };
+    float rasterDeviceScale { 1.0f };
     juce::Point<float> topLeft {};
-    int                currentPage { 0 };
+    juce::Point<float> lastDragPosition {};
+    int currentPage { 0 };
 
     juce::ListenerList<Listener> listeners;
 

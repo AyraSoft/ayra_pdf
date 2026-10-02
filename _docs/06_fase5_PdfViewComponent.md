@@ -326,19 +326,19 @@ Quando `PdfViewComponent` e' completo e la verification esterna e' disponibile:
 - [ ] Implementare `invalidatePageCache()` — helper privato
 - [ ] Implementare `clampTopLeft()` — helper privato
 - [x] W01: `paint()` solo compositing cache + LookAndFeel
-- [ ] Implementare `resized()` con aggiornamento DPI scale
+- [x] W02: HiDPI scale + invalidazione raster
 - [x] W01: load file transazionale + notifica lifetime-safe
 - [x] W01: load memory transazionale
 - [x] W01: navigazione 1-based + invalidazione cache
-- [ ] Implementare `setCurrentPageZoom()` con formula corretta anchor point (FIX v1)
-- [ ] Implementare `setCurrentPageTopLeftPosition()` con clamp
+- [x] W02: zoom bounded con anchor stabile
+- [x] W02: pan setter + clamp
 - [x] W01: bounds logici post-rotation via `PdfPage::getDisplaySize()`
 - [x] W01: dimensioni native visuali
 - [x] W01: stato viewer snapshot coerente
 - [x] W01: page count snapshot
 - [x] W01: export validato
 - [x] W01: save-to-memory
-- [ ] Implementare `mouseDown`, `mouseDrag`, `mouseWheelMove`, `mouseMagnify`
+- [x] W02: drag/wheel/pinch
 - [x] W01: `setDocument(shared_ptr)` ownership asincrona esplicita
 - [x] W01: listener + std::function con BailOutChecker
 - [ ] Preparare il cutover current-only: nessun alias; rimozione legacy nel microstep C01

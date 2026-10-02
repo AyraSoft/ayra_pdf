@@ -19,6 +19,15 @@ namespace ayra
 namespace
 {
 
+constexpr float minZoom = 0.1f;
+constexpr float maxZoom = 10.0f;
+constexpr float minVisibleFraction = 0.1f;
+
+[[nodiscard]] bool isFinitePoint (juce::Point<float> point) noexcept
+{
+    return std::isfinite (point.x) && std::isfinite (point.y);
+}
+
 [[nodiscard]] juce::ThreadPool& getPdfRenderPool()
 {
     static juce::ThreadPool pool { 1 };
@@ -29,7 +38,8 @@ namespace
 
 struct PdfViewComponent::RenderState
 {
-    std::atomic<std::uint64_t> generation { 0 };
+    std::atomic<std::uint64_t> renderGeneration { 0 };
+    std::atomic<std::uint64_t> searchGeneration { 0 };
 
     // Accesso esclusivo Message Thread: il worker non legge mai questo puntatore.
     PdfViewComponent* owner { nullptr };
@@ -93,6 +103,16 @@ void PdfDefaultLookAndFeel::drawPdfViewPageShadow (juce::Graphics& g,
     g.fillRect (shadow);
 }
 
+void PdfDefaultLookAndFeel::drawPdfViewSearchHighlight (juce::Graphics& g,
+                                                        juce::Rectangle<float> highlightBounds,
+                                                        PdfViewComponent& comp)
+{
+    g.setColour (resolveColour (comp,
+                                PdfViewComponent::searchHighlightColourId,
+                                juce::Colour (0x66ffd54f)));
+    g.fillRect (highlightBounds);
+}
+
 juce::Colour PdfDefaultLookAndFeel::resolveColour (PdfViewComponent& comp,
                                                     int colourId,
                                                     juce::Colour fallback)
@@ -139,6 +159,13 @@ void PdfViewComponent::LookAndFeelMethods::drawPdfViewPageShadow (juce::Graphics
     PdfDefaultLookAndFeel::getDefaultInstance().drawPdfViewPageShadow (g, pageBounds, comp);
 }
 
+void PdfViewComponent::LookAndFeelMethods::drawPdfViewSearchHighlight (juce::Graphics& g,
+                                                                       juce::Rectangle<float> highlightBounds,
+                                                                       PdfViewComponent& comp)
+{
+    PdfDefaultLookAndFeel::getDefaultInstance().drawPdfViewSearchHighlight (g, highlightBounds, comp);
+}
+
 //==============================================================================
 
 PdfViewComponent::PdfViewComponent()
@@ -152,7 +179,8 @@ PdfViewComponent::~PdfViewComponent()
     if (renderState != nullptr)
     {
         renderState->owner = nullptr;
-        renderState->generation.fetch_add (1, std::memory_order_release);
+        renderState->renderGeneration.fetch_add (1, std::memory_order_release);
+        renderState->searchGeneration.fetch_add (1, std::memory_order_release);
     }
 
     currentDocument.reset();
@@ -197,8 +225,11 @@ void PdfViewComponent::setPageNumber (int pageNumber)
     currentPage = pageNumber;
     topLeft = {};
     cachedPageInfo = {};
+
     invalidatePageCache();
+    invalidateSearchResults();
     requestPageRender();
+    requestSearchResults();
     notifyPageChanged();
 }
 
@@ -229,8 +260,27 @@ float PdfViewComponent::getCurrentPageZoom() const
 
 void PdfViewComponent::setCurrentPageZoom (float zoom, juce::Point<float> handlePoint)
 {
-    juce::ignoreUnused (zoom, handlePoint);
-    jassertfalse; // Viewport zoom/anchor belongs to the interaction layer.
+    if (!thereIsADocumentLoaded()
+        || !std::isfinite (zoom)
+        || !isFinitePoint (handlePoint))
+    {
+        return;
+    }
+
+    const float newZoom = juce::jlimit (minZoom, maxZoom, zoom);
+
+    if (std::abs (newZoom - currentZoom) <= std::numeric_limits<float>::epsilon())
+        return;
+
+    const float oldZoom = currentZoom;
+    const auto anchorInPage = (handlePoint - topLeft) / oldZoom;
+
+    currentZoom = newZoom;
+    topLeft = handlePoint - anchorInPage * newZoom;
+
+    clampTopLeft();
+    invalidatePageCache();
+    requestPageRender();
 }
 
 juce::Point<float> PdfViewComponent::getCurrentPageTopLeftPosition() const
@@ -240,7 +290,11 @@ juce::Point<float> PdfViewComponent::getCurrentPageTopLeftPosition() const
 
 void PdfViewComponent::setCurrentPageTopLeftPosition (juce::Point<float> newPos)
 {
+    if (!isFinitePoint (newPos))
+        return;
+
     topLeft = newPos;
+    clampTopLeft();
     repaint();
 }
 
@@ -312,6 +366,33 @@ void PdfViewComponent::setDocument (std::shared_ptr<PdfDocument> doc)
     activateDocument (std::move (doc));
 }
 
+void PdfViewComponent::setSearchQuery (const juce::String& query)
+{
+    if (query == searchQuery)
+        return;
+
+    searchQuery = query;
+    invalidateSearchResults();
+
+    if (searchQuery.isEmpty())
+    {
+        notifySearchResultsChanged();
+        return;
+    }
+
+    requestSearchResults();
+}
+
+void PdfViewComponent::clearSearch()
+{
+    setSearchQuery ({});
+}
+
+int PdfViewComponent::getSearchResultCount() const noexcept
+{
+    return searchResults.size();
+}
+
 void PdfViewComponent::addListener (Listener* l)
 {
     listeners.add (l);
@@ -343,11 +424,85 @@ void PdfViewComponent::paint (juce::Graphics& g)
 
     if (cachedPageImage.isValid())
         g.drawImage (cachedPageImage, pageBounds);
+
+    for (const auto& result : searchResults)
+    {
+        if (result.pageIndex != currentPage - 1)
+            continue;
+
+        const auto highlightBounds = pdfBoundsToWidget (cachedPageInfo, result.bounds);
+
+        if (!highlightBounds.isEmpty())
+            laf.drawPdfViewSearchHighlight (g, highlightBounds, *this);
+    }
 }
 
 void PdfViewComponent::resized()
 {
+    updateRasterDeviceScale();
+    clampTopLeft();
     repaint();
+}
+
+void PdfViewComponent::moved()
+{
+    updateRasterDeviceScale();
+}
+
+void PdfViewComponent::parentHierarchyChanged()
+{
+    updateRasterDeviceScale();
+}
+
+void PdfViewComponent::mouseDown (const juce::MouseEvent& event)
+{
+    lastDragPosition = event.position;
+}
+
+void PdfViewComponent::mouseDrag (const juce::MouseEvent& event)
+{
+    if (!event.mods.isLeftButtonDown())
+        return;
+
+    const auto delta = event.position - lastDragPosition;
+    lastDragPosition = event.position;
+
+    if (!isFinitePoint (delta))
+        return;
+
+    topLeft += delta;
+    clampTopLeft();
+    repaint();
+}
+
+void PdfViewComponent::mouseWheelMove (const juce::MouseEvent& event,
+                                       const juce::MouseWheelDetails& wheel)
+{
+    if (event.mods.isCommandDown() || event.mods.isCtrlDown())
+    {
+        const float zoomMultiplier = std::pow (2.0f, wheel.deltaY);
+        setCurrentPageZoom (currentZoom * zoomMultiplier, event.position);
+        return;
+    }
+
+    constexpr float wheelPanScale = 80.0f;
+    const juce::Point<float> delta { wheel.deltaX * wheelPanScale,
+                                     wheel.deltaY * wheelPanScale };
+
+    if (!isFinitePoint (delta))
+        return;
+
+    topLeft += delta;
+    clampTopLeft();
+    repaint();
+}
+
+void PdfViewComponent::mouseMagnify (const juce::MouseEvent& event, float scaleFactor)
+{
+    if (!std::isfinite (scaleFactor) || scaleFactor <= 0.0f)
+        return;
+
+    setCurrentPageZoom (currentZoom * scaleFactor, event.position);
 }
 
 PdfViewComponent::LookAndFeelMethods& PdfViewComponent::getLAF()
@@ -369,8 +524,14 @@ void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
     currentPageCount = currentDocument != nullptr ? currentDocument->getPageCount() : 0;
     currentPage = currentPageCount > 0 ? 1 : 0;
     currentZoom = 1.0f;
+    rasterDeviceScale = 1.0f;
     topLeft = {};
     cachedPageInfo = currentPage > 0 ? currentDocument->getPage (0) : PdfPage {};
+
+    searchQuery.clear();
+    invalidateSearchResults();
+    updateRasterDeviceScale();
+    clampTopLeft();
 
     invalidatePageCache();
     requestPageRender();
@@ -380,7 +541,7 @@ void PdfViewComponent::activateDocument (std::shared_ptr<PdfDocument> doc)
 void PdfViewComponent::invalidatePageCache()
 {
     if (renderState != nullptr)
-        renderState->generation.fetch_add (1, std::memory_order_release);
+        renderState->renderGeneration.fetch_add (1, std::memory_order_release);
 
     cachedPageImage = {};
     repaint();
@@ -392,9 +553,9 @@ void PdfViewComponent::requestPageRender()
         return;
 
     const auto state = renderState;
-    const auto generation = state->generation.load (std::memory_order_acquire);
+    const auto generation = state->renderGeneration.load (std::memory_order_acquire);
     const int pageIndex = currentPage - 1;
-    const float rasterScale = currentZoom;
+    const float rasterScale = currentZoom * rasterDeviceScale;
     const auto document = currentDocument;
 
     try
@@ -402,20 +563,20 @@ void PdfViewComponent::requestPageRender()
         getPdfRenderPool().addJob (
             [state, document, generation, pageIndex, rasterScale]
             {
-                if (state->generation.load (std::memory_order_acquire) != generation)
+                if (state->renderGeneration.load (std::memory_order_acquire) != generation)
                     return;
 
                 const auto page = document->getPage (pageIndex);
 
                 if (!page.isValid()
-                    || state->generation.load (std::memory_order_acquire) != generation)
+                    || state->renderGeneration.load (std::memory_order_acquire) != generation)
                 {
                     return;
                 }
 
                 auto image = document->renderPage (pageIndex, rasterScale);
 
-                if (state->generation.load (std::memory_order_acquire) != generation)
+                if (state->renderGeneration.load (std::memory_order_acquire) != generation)
                     return;
 
                 try
@@ -423,7 +584,7 @@ void PdfViewComponent::requestPageRender()
                     (void) juce::MessageManager::callAsync (
                         [state, generation, page, image = std::move (image)] () mutable
                         {
-                            if (state->generation.load (std::memory_order_acquire) != generation)
+                            if (state->renderGeneration.load (std::memory_order_acquire) != generation)
                                 return;
 
                             if (auto* owner = state->owner)
@@ -445,7 +606,7 @@ void PdfViewComponent::publishPageRender (std::uint64_t generation,
                                           juce::Image image)
 {
     if (renderState == nullptr
-        || generation != renderState->generation.load (std::memory_order_acquire)
+        || generation != renderState->renderGeneration.load (std::memory_order_acquire)
         || page.index != currentPage - 1)
     {
         return;
@@ -453,7 +614,200 @@ void PdfViewComponent::publishPageRender (std::uint64_t generation,
 
     cachedPageInfo = page;
     cachedPageImage = std::move (image);
+    clampTopLeft();
     repaint();
+}
+
+void PdfViewComponent::invalidateSearchResults()
+{
+    if (renderState != nullptr)
+        renderState->searchGeneration.fetch_add (1, std::memory_order_release);
+
+    searchResults.clearQuick();
+    repaint();
+}
+
+void PdfViewComponent::requestSearchResults()
+{
+    if (!thereIsADocumentLoaded()
+        || renderState == nullptr
+        || searchQuery.isEmpty())
+    {
+        return;
+    }
+
+    const auto state = renderState;
+    const auto generation = state->searchGeneration.load (std::memory_order_acquire);
+    const int pageIndex = currentPage - 1;
+    const auto query = searchQuery;
+    const auto document = currentDocument;
+
+    try
+    {
+        getPdfRenderPool().addJob (
+            [state, document, generation, pageIndex, query]
+            {
+                if (state->searchGeneration.load (std::memory_order_acquire) != generation)
+                    return;
+
+                auto results = document->findText (query, pageIndex);
+
+                if (state->searchGeneration.load (std::memory_order_acquire) != generation)
+                    return;
+
+                try
+                {
+                    (void) juce::MessageManager::callAsync (
+                        [state, generation, pageIndex, results = std::move (results)] () mutable
+                        {
+                            if (state->searchGeneration.load (std::memory_order_acquire) != generation)
+                                return;
+
+                            if (auto* owner = state->owner)
+                                owner->publishSearchResults (generation,
+                                                             pageIndex,
+                                                             std::move (results));
+                        });
+                }
+                catch (const std::bad_alloc&)
+                {
+                }
+            });
+    }
+    catch (const std::bad_alloc&)
+    {
+    }
+}
+
+void PdfViewComponent::publishSearchResults (std::uint64_t generation,
+                                             int pageIndex,
+                                             juce::Array<PdfSearchResult> results)
+{
+    if (renderState == nullptr
+        || generation != renderState->searchGeneration.load (std::memory_order_acquire)
+        || pageIndex != currentPage - 1)
+    {
+        return;
+    }
+
+    searchResults = std::move (results);
+    repaint();
+    notifySearchResultsChanged();
+}
+
+void PdfViewComponent::updateRasterDeviceScale()
+{
+    float newScale = juce::Component::getApproximateScaleFactorForComponent (this);
+
+    if (const auto* display = juce::Desktop::getInstance()
+                                  .getDisplays()
+                                  .getDisplayForRect (getScreenBounds()))
+    {
+        newScale *= static_cast<float> (display->scale);
+    }
+
+    if (!std::isfinite (newScale) || newScale <= 0.0f)
+        newScale = 1.0f;
+
+    newScale = juce::jlimit (0.25f, 8.0f, newScale);
+
+    if (std::abs (newScale - rasterDeviceScale) <= 0.001f)
+        return;
+
+    rasterDeviceScale = newScale;
+
+    if (thereIsADocumentLoaded())
+    {
+        invalidatePageCache();
+        requestPageRender();
+    }
+}
+
+void PdfViewComponent::clampTopLeft()
+{
+    const auto page = getCurrentPageInfo();
+
+    if (!page.isValid()
+        || !std::isfinite (currentZoom)
+        || currentZoom <= 0.0f)
+    {
+        return;
+    }
+
+    const auto displaySize = page.getDisplaySize() * currentZoom;
+    const float viewWidth = static_cast<float> (getWidth());
+    const float viewHeight = static_cast<float> (getHeight());
+
+    if (displaySize.x <= viewWidth)
+        topLeft.x = (viewWidth - displaySize.x) * 0.5f;
+    else
+        topLeft.x = juce::jlimit (viewWidth * minVisibleFraction - displaySize.x,
+                                  viewWidth * (1.0f - minVisibleFraction),
+                                  topLeft.x);
+
+    if (displaySize.y <= viewHeight)
+        topLeft.y = (viewHeight - displaySize.y) * 0.5f;
+    else
+        topLeft.y = juce::jlimit (viewHeight * minVisibleFraction - displaySize.y,
+                                  viewHeight * (1.0f - minVisibleFraction),
+                                  topLeft.y);
+}
+
+juce::Rectangle<float> PdfViewComponent::pdfBoundsToWidget (const PdfPage& page,
+                                                            juce::Rectangle<float> pdfBounds) const
+{
+    if (!page.isValid() || pdfBounds.isEmpty())
+        return {};
+
+    const auto clipped = pdfBounds.getIntersection (page.bounds);
+
+    if (clipped.isEmpty())
+        return {};
+
+    const float localX = clipped.getX() - page.bounds.getX();
+    const float localBottom = clipped.getY() - page.bounds.getY();
+    const float width = clipped.getWidth();
+    const float height = clipped.getHeight();
+    const float pageWidth = page.bounds.getWidth();
+    const float pageHeight = page.bounds.getHeight();
+
+    juce::Rectangle<float> displayBounds;
+
+    switch (page.rotation)
+    {
+        case 0:
+            displayBounds = { localX,
+                              pageHeight - (localBottom + height),
+                              width,
+                              height };
+            break;
+
+        case 90:
+            displayBounds = { localBottom,
+                              localX,
+                              height,
+                              width };
+            break;
+
+        case 180:
+            displayBounds = { pageWidth - (localX + width),
+                              localBottom,
+                              width,
+                              height };
+            break;
+
+        case 270:
+            displayBounds = { pageHeight - (localBottom + height),
+                              pageWidth - (localX + width),
+                              height,
+                              width };
+            break;
+
+        default:
+            return {};
+    }
+
+    return displayBounds * currentZoom + topLeft;
 }
 
 void PdfViewComponent::notifyDocumentLoaded()
@@ -486,6 +840,23 @@ void PdfViewComponent::notifyPageChanged()
 
     if (onPageChanged)
         onPageChanged (page);
+}
+
+void PdfViewComponent::notifySearchResultsChanged()
+{
+    const int resultCount = searchResults.size();
+    juce::Component::BailOutChecker checker (this);
+
+    listeners.callChecked (checker, [this, resultCount] (Listener& listener)
+    {
+        listener.pdfSearchResultsChanged (this, resultCount);
+    });
+
+    if (checker.shouldBailOut())
+        return;
+
+    if (onSearchResultsChanged)
+        onSearchResultsChanged (resultCount);
 }
 
 } // namespace ayra

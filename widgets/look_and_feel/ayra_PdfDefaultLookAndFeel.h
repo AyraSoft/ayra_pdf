@@ -44,6 +44,10 @@ public:
                                 juce::Rectangle<float> pageBounds,
                                 PdfViewComponent&) override;
 
+    void drawPdfViewSearchHighlight (juce::Graphics&,
+                                     juce::Rectangle<float> highlightBounds,
+                                     PdfViewComponent&) override;
+
 private:
     PdfDefaultLookAndFeel() = default;
 

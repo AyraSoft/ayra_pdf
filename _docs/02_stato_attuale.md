@@ -494,7 +494,7 @@ nel widget.
 - zoom anchor matematicamente stabile;
 - HiDPI non cambia dimensioni logiche;
 - mouse/pinch/pan funzionano senza rerender per il solo pan;
-- overlay search usa bounds corretti anche con pagine ruotate;
+- overlay search usa bounds corretti anche con MediaBox non-zero e pagine ruotate;
 - diff audit statico completato;
 - GUI interaction/HiDPI/search visual test: **external pending**.
 
