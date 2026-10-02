@@ -68,6 +68,26 @@ static_assert (std::is_same_v<
 namespace
 {
 
+struct PreSourceIdentityRendererContract final : PdfRenderer
+{
+    bool loadFromFile (const juce::File&) noexcept override { return false; }
+    bool loadFromMemory (const void*, size_t) noexcept override { return false; }
+    bool saveToFile (const juce::File&) const noexcept override { return false; }
+    bool saveToMemory (juce::MemoryBlock&) const noexcept override { return false; }
+    void close() noexcept override {}
+    bool isLoaded() const noexcept override { return false; }
+    int getPageCount() const noexcept override { return 0; }
+    PdfPage getPage (int) const noexcept override { return {}; }
+    juce::Image renderPage (int, float) noexcept override { return {}; }
+    juce::Array<PdfSearchResult> findText (const juce::String&, int) noexcept override { return {}; }
+    juce::String extractText (int) noexcept override { return {}; }
+
+    // Intentionally no sourceBytesEqualFile() override: this represents a
+    // renderer written against the public contract before that hook existed.
+};
+
+static_assert (! std::is_abstract_v<PreSourceIdentityRendererContract>);
+
 constexpr int fixtureRotations[] { 0, 90, 180, 270 };
 
 void appendPdfAscii (juce::MemoryOutputStream& output, const juce::String& text)

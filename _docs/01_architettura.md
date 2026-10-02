@@ -125,3 +125,9 @@ On Apple, PDFKit text/search is built from a no-copy `CFData` view over the same
 snapshot used by CoreGraphics. The renderer keeps both the byte snapshot and the CFData/PDFDocument
 cache alive explicitly, so text/search after external file mutation still observes the originally
 opened document without a second full-size provider copy.
+
+
+The source-identity hook on `PdfRenderer` is an additive source-compatible extension: its base
+implementation fails closed. A compile guard instantiates a renderer implementing the pre-extension
+pure-virtual surface without overriding the new hook, preventing accidental source breakage for
+custom backends.
