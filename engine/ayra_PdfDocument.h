@@ -56,7 +56,8 @@ public:
 
     /** Apre un documento PDF da file.
      *  @return true se il documento e' stato caricato correttamente.
-     *  @note Idempotente: chiude automaticamente il documento precedente.
+     *  @note Replacement transazionale: il documento precedente viene sostituito
+     *        solo dopo l'apertura riuscita del candidato. Un failure lo preserva.
      */
     [[nodiscard]] bool open (const juce::File& file) noexcept;
 
@@ -64,6 +65,7 @@ public:
      *  @param data       Puntatore ai byte del PDF (non deve essere null).
      *  @param sizeBytes  Dimensione del buffer in byte.
      *  @return true se il documento e' stato caricato correttamente.
+     *  @note Replacement transazionale come l'overload da file.
      */
     [[nodiscard]] bool open (const void* data, size_t sizeBytes) noexcept;
 

@@ -62,6 +62,8 @@ La `.so` deve essere linkata e inclusa nel package Android per la stessa ABI.
 ## 7. Runtime contract
 
 - load/render/search/save non sono realtime-safe;
+- `PdfDocument::getMaximumDocumentBytes()` e' l'owner pubblico del budget sorgente canonico;
+- open file/memory sostituisce il documento attivo solo dopo un load riuscito;
 - un `PdfDocument` condiviso col widget non va mutato concorrentemente dal caller;
 - PDFium serializza tutte le API FPDF process-wide;
 - Apple serializza le API per istanza.
