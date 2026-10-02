@@ -63,3 +63,9 @@ toolchain concern rather than being approximated with incompatible flags.
 GUI-capable runner builds define `JUCE_MODAL_LOOPS_PERMITTED=1` only for the contract target. This
 is required solely to drain `AsyncUpdater` publications deterministically in teardown/search tests;
 headless builds do not enable modal loops.
+
+
+The module test source itself remains compilable in any `JUCE_UNIT_TESTS=1` consumer: tests that
+need `MessageManager::runDispatchLoopUntil()` are guarded by `JUCE_MODAL_LOOPS_PERMITTED`. The
+canonical GUI runner enables that flag to execute the full async-publication coverage; other unit-test
+hosts may omit it without compile failure.

@@ -287,7 +287,7 @@ juce::Colour sampleDisplayRectCentre (const juce::Image& image,
     return image.getPixelAt (x, y);
 }
 
-#ifndef AYRA_PDF_HEADLESS
+#if ! defined (AYRA_PDF_HEADLESS) && JUCE_MODAL_LOOPS_PERMITTED
 bool waitForPdfWorkerIdle (int timeoutMilliseconds)
 {
     const auto deadline = juce::Time::getMillisecondCounter()
@@ -518,6 +518,7 @@ public:
             expectEquals (listener.loaded, 1);
             expectEquals (callbackLoaded, 1);
 
+           #if JUCE_MODAL_LOOPS_PERMITTED
             view.setSearchQuery ("AYRA");
             expect (drainPdfAsyncPublications (view, 1));
             expect (view.getSearchResultCount() > 0);
@@ -556,6 +557,18 @@ public:
             view.setDocument (nullptr);
             expectEquals (listener.closed, 1);
             expectEquals (callbackClosed, 1);
+           #else
+            view.setDocument (nullptr);
+            expect (! view.thereIsADocumentLoaded());
+            expectEquals (view.getTotPagesNum(), -1);
+            expectEquals (view.getCurrentPageOnScreen(), -1);
+            expectEquals (listener.closed, 1);
+            expectEquals (callbackClosed, 1);
+
+            view.setDocument (nullptr);
+            expectEquals (listener.closed, 1);
+            expectEquals (callbackClosed, 1);
+           #endif
 
             view.removeListener (&listener);
         }
