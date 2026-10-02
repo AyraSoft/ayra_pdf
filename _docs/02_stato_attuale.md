@@ -420,17 +420,21 @@ pagina corrente, mantenendo il widget come view del `PdfDocument` e una sola cac
 - conversione 1-based UI -> 0-based engine solo al boundary;
 - display width/height scambiano gli assi solo per rotazioni 90/270, tramite owner `PdfPage`;
 - cache immagine = rappresentazione derivata; invalidazione deterministica su documento/pagina;
+- `paint()` non esegue parsing/raster: il raster gira su un worker dedicato del widget;
+- publication worker -> Message Thread usa `SafePointer` + generation token, quindi risultati obsoleti vengono scartati;
+- cambio/distruzione documento drena i job prima di rilasciare il lifetime non-owning;
 - un load fallito lascia invariati documento corrente, pagina e cache;
 - un documento esterno deve restare vivo e non essere mutato mentre e' agganciato;
 - i Listener formali vengono notificati prima delle `std::function`, con bail-out se il callback distrugge il widget;
 - nessun falso evento `closed` quando si cambia semplicemente documento;
 - tutte le API widget e `paint` sono Message Thread only;
-- W01 rasterizza a `currentZoom` e disegna l'immagine nei bounds logici; la device scale HiDPI appartiene a W02.
+- W01 rasterizza off-thread a `currentZoom` e disegna l'immagine nei bounds logici; la device scale HiDPI appartiene a W02;
+- i renderer concreti serializzano le proprie API: PDFium process-wide, Apple per istanza.
 
 **Acceptance criteria W01**:
 - file/memory load e `setDocument` attivano solo documenti aperti con almeno una pagina;
 - stato/getter, navigazione 1-based, export e save-to-memory sono reali;
-- `paint` usa cache e non ricalcola una pagina gia' cached;
+- `paint` fa solo compositing; nessuna chiamata `PdfDocument::renderPage` avviene sul Message Thread;
 - rotazioni 90/270 producono bounds logici corretti;
 - notifiche loaded/page-changed sono lifetime-safe;
 - LookAndFeel ha forwarding default e un metodo dedicato allo sfondo pagina;

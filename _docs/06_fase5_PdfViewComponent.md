@@ -17,6 +17,8 @@ Il lavoro corrente e' diviso per ownership:
 - load file/memory e documento esterno non-owning;
 - navigazione 1-based;
 - cache `juce::Image` della pagina corrente;
+- raster su worker dedicato, mai dentro `paint()`;
+- publication sul Message Thread con generation token;
 - rendering nei bounds logici della pagina;
 - export/save-memory;
 - notifiche loaded/page-changed lifetime-safe.
@@ -75,7 +77,12 @@ void PdfViewComponent::paint (juce::Graphics& g)
 }
 ```
 
-**Strategia di caching**: W01 usa `currentZoom` come raster scale e disegna il risultato nei bounds logici. W02 aggiungera' la device scale HiDPI (`displayScale * currentZoom`) senza cambiare le dimensioni logiche della pagina.
+**Strategia di caching**: W01 usa un worker dedicato per rasterizzare a `currentZoom`.
+`paint()` legge solo la cache gia' pubblicata. Ogni invalidazione incrementa una generation:
+un risultato worker con generation vecchia viene scartato sul Message Thread. Quando cambia
+il documento, i job vengono drenati prima di rilasciare il vecchio owner/puntatore.
+W02 aggiungera' la device scale HiDPI (`displayScale * currentZoom`) senza cambiare le
+dimensioni logiche della pagina.
 
 ---
 
