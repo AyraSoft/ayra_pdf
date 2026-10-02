@@ -8,98 +8,56 @@
 
 ## Prerequisiti
 
-- PDFium installato via `./scripts/setup_pdfium.sh` (o `setup_pdfium.ps1` su Windows)
+- PDFium binario installato/linkato per la piattaforma target; gli header pubblici sono vendorizzati in git
 - Platform guard: tutto il file e' sotto `#if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID`
-- Header disponibili: `third_party/pdfium/include/fpdfview.h`, `fpdf_text.h`, `fpdf_save.h`
-- La guard `#if __has_include(...)` in `ayra_PdfiumRenderer.cpp` permette di compilare anche
-  senza PDFium installato (metodi ritornano `false` / immagine invalida senza crash)
-- Linker flags per piattaforma: vedi `07_deployment.md`
+- Header usati: `fpdfview.h`, `fpdf_edit.h`, `fpdf_transformpage.h`, poi `fpdf_text.h`/`fpdf_save.h` in P02/P03
+- **Nessun fallback `__has_include`**: se il target dichiara PDFium ma il binary/link manca, il build deve fallire invece di produrre un backend inert
+- Linker/deployment: vedi `07_deployment.md`
 
 ---
 
-## Init PDFium — singleton per processo
+## Init PDFium — lifecycle process-wide serializzato
 
-PDFium richiede `FPDF_InitLibraryWithConfig` una sola volta per processo (documentato in
-`fpdfview.h`). Nessuna API e' thread-safe: serializzare se necessario con mutex esterno.
+L'header vendorizzato `fpdfview.h` e l'upstream PDFium dichiarano che **nessuna API PDFium
+e' thread-safe**. Non basta quindi evitare accesso concorrente allo stesso documento: anche
+istanze diverse devono essere serializzate.
 
-```cpp
-namespace {
-    std::once_flag   g_pdfiumInitFlag;
-    std::atomic<int> g_pdfiumInstanceCount { 0 };
+P01 usa un unico `std::mutex` process-wide come protocollo canonico per **tutte** le chiamate
+FPDF. Lo stesso stato mantiene un instance count:
 
-    void initPdfiumLibrary()
-    {
-        FPDF_LIBRARY_CONFIG cfg;
-        cfg.version          = 2;
-        cfg.m_pUserFontPaths = nullptr;  // usa i font di sistema
-        cfg.m_pIsolate       = nullptr;  // nessun V8 isolate (non usiamo JS)
-        cfg.m_v8EmbedderSlot = 0;
-        FPDF_InitLibraryWithConfig (&cfg);
-    }
-}
+- 0 -> 1: `FPDF_InitLibraryWithConfig`;
+- 1 -> 0: `FPDF_DestroyLibrary`;
+- ogni public method che tocca FPDF acquisisce lo stesso mutex;
+- niente `std::once_flag`: non e' compatibile con destroy + eventuale re-init.
 
-PdfiumRenderer::PdfiumRenderer() : impl (std::make_unique<Impl>())
-{
-#ifdef AYRA_PDFIUM_AVAILABLE
-    std::call_once (g_pdfiumInitFlag, initPdfiumLibrary);
-    g_pdfiumInstanceCount.fetch_add (1, std::memory_order_relaxed);
-#endif
-}
-
-PdfiumRenderer::~PdfiumRenderer()
-{
-    close();
-#ifdef AYRA_PDFIUM_AVAILABLE
-    if (g_pdfiumInstanceCount.fetch_sub (1, std::memory_order_acq_rel) == 1)
-        FPDF_DestroyLibrary();
-        // Reset per permettere re-init in test unitari che creano/distruggono renderer piu' volte:
-        // g_pdfiumInitFlag = std::once_flag{}; // NON thread-safe — usare solo in test mono-thread
-#endif
-}
-```
+La configurazione e' value-initialized, `version = 2`, font path default, isolate nullo.
+Il mutex non rende sicuro distruggere un oggetto mentre un altro thread lo usa: il lifetime
+dell'istanza resta un invariant del caller.
 
 ---
 
-## loadFromFile()
+## loadFromFile() — converge sul percorso memory
 
-```cpp
-bool PdfiumRenderer::loadFromFile (const juce::File& file) noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return false;
-#else
-    close();
-    impl->document = FPDF_LoadDocument (file.getFullPathName().toRawUTF8(), nullptr);
-    return impl->document != nullptr;
-#endif
-}
-```
+Non viene usato `FPDF_LoadDocument(path)`: mantenere due loader produrrebbe due policy di
+lifetime/save/error handling. Il file viene validato e letto con JUCE entro
+`detail::maxDocumentBytes`, poi passa allo stesso percorso owned-memory di `loadFromMemory`.
+
+La lettura file avviene fuori dal mutex PDFium; solo la chiamata FPDF e il commit del nuovo
+documento sono serializzati. Un load fallito lascia intatto il documento precedente.
 
 ---
 
 ## loadFromMemory()
 
-**CRITICO**: `FPDF_LoadMemDocument` mantiene un puntatore al buffer originale per tutta la vita
-del documento. Il buffer deve rimanere valido finche' il documento non viene chiuso.
-Lo salviamo in `impl->pdfData` per garantire la lifetime.
+`FPDF_LoadMemDocument64` mantiene il buffer valido per la vita del documento. P01:
 
-```cpp
-bool PdfiumRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcept
-{
-#ifndef AYRA_PDFIUM_AVAILABLE
-    return false;
-#else
-    close();
-    impl->pdfData.replaceAll (data, sizeBytes); // copia nel buffer owned
-    impl->document = FPDF_LoadMemDocument (
-        impl->pdfData.getData(),
-        (int) impl->pdfData.getSize(),
-        nullptr); // nullptr = nessuna password
-    if (impl->document == nullptr) { impl->pdfData.reset(); }
-    return impl->document != nullptr;
-#endif
-}
-```
+1. valida null/size e il limite canonico;
+2. copia in un `MemoryBlock` owned fuori dalla lock PDFium;
+3. acquisisce il mutex process-wide;
+4. crea il nuovo documento;
+5. solo a successo chiude il precedente e pubblica documento + backing buffer.
+
+Questo rende il load transazionale e rimuove narrowing a `int`.
 
 ---
 
@@ -476,18 +434,18 @@ void PdfiumRenderer::close() noexcept
 ## Checklist implementazione Fase 3
 
 - [ ] Verificare che `setup_pdfium.sh` abbia scaricato i binari per la piattaforma target
-- [ ] Aggiornare `AYRA_PDFIUM_AVAILABLE` guard se necessario (attualmente in `ayra_PdfiumRenderer.cpp`)
-- [ ] `loadFromFile` — `FPDF_LoadDocument`
-- [ ] `loadFromMemory` — `FPDF_LoadMemDocument` con copia in `impl->pdfData`
+- [ ] Rimuovere il fallback `AYRA_PDFIUM_AVAILABLE/__has_include`: current-only richiede backend reale
+- [ ] `loadFromFile` — bounded JUCE read -> percorso memory canonico
+- [ ] `loadFromMemory` — `FPDF_LoadMemDocument64`, commit transazionale
 - [ ] `saveToFile` — `FPDF_SaveAsCopy` con `FileWriter` struct
 - [ ] `saveToMemory` — `FPDF_SaveAsCopy` con `MemWriter` struct
 - [ ] `close` — `FPDF_CloseDocument` + reset pdfData
 - [ ] `getPageCount` — `FPDF_GetPageCount`
-- [ ] `getPage` — `FPDF_GetPageWidth/Height`, `FPDFPage_GetRotation`
+- [ ] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
 - [ ] `renderPage` — `FPDFBitmap_CreateEx` + `FPDF_RenderPageBitmap` + swap B/R se necessario
 - [ ] `extractText` — `FPDFText_LoadPage` + `FPDFText_GetText` + UTF-16LE -> juce::String
 - [ ] `findText` — `FPDFText_FindStart/Next/Close` + `FPDFText_GetCharBox`
 - [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
-- [ ] Verificare lifecycle: costruttore init + distruttore decrement + destroy quando last instance
+- [ ] Lifecycle + mutex process-wide su ogni API PDFium; init 0->1 / destroy 1->0
 - [ ] Test manuale Windows: aprire PDF, renderizzare pagina, verificare colori corretti
 - [ ] Test round-trip: `loadFromFile` -> `saveToMemory` -> `loadFromMemory` -> `renderPage` deve produrre immagine identica

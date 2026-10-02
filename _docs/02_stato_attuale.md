@@ -225,6 +225,63 @@ bloccati dal backend PDFium fino a P01-P03.
 
 ---
 
+## Change Contract — P01 PDFium lifecycle / load / metadata
+
+**Task model**: rendere reale il backend PDFium minimo, con lifecycle process-wide corretto,
+un solo percorso canonico di caricamento e metadata pagina coerenti con il backend Apple.
+
+**Evidenza threading**: l'header vendorizzato `fpdfview.h` dichiara esplicitamente che
+**nessuna API PDFium e' thread-safe** e richiede all'embedder mutex/serializzazione globale.
+Di conseguenza la sincronizzazione appartiene al backend, non ai consumer.
+
+**Canonical owner**:
+- `PdfiumRenderer.cpp`: init/destroy, mutex process-wide, documento e backing bytes;
+- `renderer/ayra_PdfSafetyLimits.h`: limiti di input condivisi;
+- PDFium: parsing e page metadata.
+
+**Existing reusable path**:
+- `FPDF_InitLibraryWithConfig` / `FPDF_DestroyLibrary`;
+- `FPDF_LoadMemDocument64`;
+- `FPDF_GetPageCount`, `FPDF_LoadPage`, `FPDFPage_GetMediaBox`,
+  `FPDFPage_GetRotation`.
+
+**Expected files**:
+- `renderer/pdfium/ayra_PdfiumRenderer.cpp`;
+- `renderer/pdfium/ayra_PdfiumRenderer.h`;
+- `_docs/04_fase3_PdfiumRenderer.md`;
+- questo documento.
+
+**Forbidden ownership changes**:
+- nessuna lock nel consumer/`PdfDocument`;
+- nessun secondo file-loading path tramite `FPDF_LoadDocument`;
+- nessun fallback silenzioso se PDFium non e' linkato;
+- nessuna logica render/save/text di P02/P03 anticipata;
+- nessuna modifica a header/vendor PDFium.
+
+**Invariants**:
+- init PDFium sul passaggio instance-count 0 -> 1, destroy su 1 -> 0, entrambi sotto
+  lo stesso mutex che serializza tutte le API FPDF;
+- nessun `once_flag` combinato con destroy/re-init;
+- ogni futura chiamata PDFium deve acquisire lo stesso mutex process-wide;
+- `loadFromFile` legge bounded con JUCE e converge su `FPDF_LoadMemDocument64`;
+- backing bytes owned restano validi fino a `FPDF_CloseDocument`;
+- load fallito lascia intatto il documento precedente;
+- `close()` e' idempotente;
+- page metadata usa MediaBox in PDF page space 72 dpi, lower-left/Y-up;
+- `PdfiumRenderer` non e' realtime-safe; lifetime dell'istanza resta responsabilita' del caller.
+
+**Acceptance criteria P01**:
+- init/destroy process-wide senza race e senza doppio init/destroy;
+- `loadFromFile`, `loadFromMemory`, `close`, `isLoaded`, `getPageCount`, `getPage`
+  reali e senza `jassertfalse`;
+- document size bounded prima dell'allocazione;
+- metadata pagina finite/non-empty e rotation valida 0/90/180/270;
+- nessun silent fallback `AYRA_PDFIUM_AVAILABLE`;
+- static diff audit completato;
+- build/test Win/Linux/Android e stress multi-thread: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
