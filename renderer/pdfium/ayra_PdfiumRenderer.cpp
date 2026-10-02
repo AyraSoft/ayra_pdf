@@ -13,26 +13,10 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
-// Backend PDFium current-only.
-// P01: lifecycle process-wide, load owned-memory, close e metadata.
-// P02/P03 completeranno save/render e text/search.
+// Backend PDFium per Windows, Linux e Android.
+// Tutte le API FPDF sono serializzate process-wide per contratto PDFium.
 
 #if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
-
-#include "../ayra_PdfSafetyLimits.h"
-
-#include "../../third_party/pdfium/include/fpdfview.h"
-#include "../../third_party/pdfium/include/fpdf_edit.h"
-#include "../../third_party/pdfium/include/fpdf_transformpage.h"
-#include "../../third_party/pdfium/include/fpdf_text.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <limits>
-#include <memory>
-#include <new>
-#include <vector>
 
 namespace ayra
 {

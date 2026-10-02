@@ -25,10 +25,7 @@ namespace ayra
  *  Usa CoreGraphics per lifecycle/raster e PDFKit per text extraction/search.
  *  Sono framework Apple di sistema: nessuna dipendenza third-party.
  *
- *  Migrazione current-only dal legacy MacPDFComponent.mm.
- *  M01-M03 (lifecycle/load/metadata, rendering, save) sono implementati staticamente;
- *  M04 completa testo/ricerca via PDFKit.
- *
+
  *  Usa il pattern Pimpl per isolare i tipi ObjC/CoreGraphics dagli
  *  header C++ — necessario per evitare contaminazione degli altri moduli.
  *

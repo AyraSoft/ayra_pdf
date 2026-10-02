@@ -13,24 +13,10 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
-// Implementazione Apple di MacPdfRenderer.
-// CoreGraphics: lifecycle, metadata, raster.
-// PDFKit: estrazione testo e ricerca.
-// Roadmap canonica: _docs/02_stato_attuale.md.
-// M01-M03 sono implementati staticamente; M04 completa il content model testuale.
-// Il codice legacy e' solo riferimento storico e verra' rimosso al cutover current-only.
+// Backend Apple: CoreGraphics possiede lifecycle/metadata/raster;
+// PDFKit fornisce il content model testuale come cache derivata.
 
 #if JUCE_MAC || JUCE_IOS
-
-#include "../ayra_PdfSafetyLimits.h"
-
-#import <PDFKit/PDFKit.h>
-
-#include <cmath>
-#include <cstdint>
-#include <limits>
-#include <memory>
-#include <new>
 
 namespace ayra
 {

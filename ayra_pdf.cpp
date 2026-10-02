@@ -19,29 +19,36 @@
 
 #include "ayra_pdf.h"
 
+#include "renderer/ayra_PdfSafetyLimits.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <new>
+#include <vector>
+
 //==============================================================================
 // RENDERER PLATFORM-SPECIFICO
 
 #if JUCE_MAC || JUCE_IOS
-  // Backend v2 Apple: CoreGraphics + PDFKit.
-  // Il blocco AppKit legacy e' transitorio fino al cutover current-only C01.
   #include <CoreGraphics/CoreGraphics.h>
-  #include <Cocoa/Cocoa.h>
-  #include "pdf_component/Mac_PDF_core/PDFView.m"
-  #include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
+  #import <PDFKit/PDFKit.h>
+
+  #if JUCE_MAC
+    #include <Cocoa/Cocoa.h>
+    #include "pdf_component/Mac_PDF_core/PDFView.m"
+    #include "pdf_component/Mac_PDF_core/MacPDFComponent.mm"
+  #endif
+
   #include "renderer/mac/ayra_MacPdfRenderer.mm"
 
-#elif JUCE_WINDOWS
-  // Renderer PDFium (Fase 3: implementazione completa)
-  #include "renderer/pdfium/ayra_PdfiumRenderer.cpp"  // skeleton Fase 3
-  // LEGACY -- rimosso in Fase 5 quando PdfViewComponent sara' completo
-  // #include "pdf_component/Windows_PDF_core/WindowsPDFViewComponent.h"
-
-#elif JUCE_ANDROID || JUCE_LINUX
-  // Renderer PDFium (Fase 3: implementazione completa)
-  #include "renderer/pdfium/ayra_PdfiumRenderer.cpp"  // skeleton Fase 3
-  // LEGACY -- rimosso in Fase 5 quando PdfViewComponent sara' completo
-  // #include "pdf_component/Linux_PDF_core/LinuxPDFViewComponent.h"
+#elif JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
+  #include "third_party/pdfium/include/fpdfview.h"
+  #include "third_party/pdfium/include/fpdf_edit.h"
+  #include "third_party/pdfium/include/fpdf_transformpage.h"
+  #include "third_party/pdfium/include/fpdf_text.h"
+  #include "renderer/pdfium/ayra_PdfiumRenderer.cpp"
 #endif
 
 //==============================================================================
@@ -52,5 +59,8 @@
 // WIDGETS
 #ifndef AYRA_PDF_HEADLESS
   #include "widgets/ayra_PdfViewComponent.cpp"
-  #include "pdf_component/PDFComponent.cpp"  // LEGACY backward compat
+
+  #if JUCE_MAC
+    #include "pdf_component/PDFComponent.cpp"
+  #endif
 #endif

@@ -13,9 +13,13 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
+/** @file
+ *  Limiti di sicurezza canonici per input, raster e testo di tutti i backend ayra_pdf.
+ *  Sono resource guard del modulo, non limiti del formato PDF.
+ */
+
 #pragma once
 
-#include <cstdint>
 
 namespace ayra::detail
 {

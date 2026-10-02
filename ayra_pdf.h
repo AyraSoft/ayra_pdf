@@ -37,6 +37,9 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include <functional>
+#include <memory>
+
 //==============================================================================
 // ENGINE -- logica pura, headless-safe (nessuna dipendenza GUI)
 #include "engine/ayra_PdfPage.h"
@@ -62,6 +65,7 @@
 #endif
 
 //==============================================================================
-// LEGACY TRANSITORIO -- solo fino al cutover current-only C01.
-// Nessun alias PDFComponent -> PdfViewComponent verra' introdotto.
-#include "pdf_component/PDFComponent.h"
+// Legacy AppKit temporaneo durante la sostituzione del widget. Non e' disponibile su iOS.
+#if JUCE_MAC
+  #include "pdf_component/PDFComponent.h"
+#endif
