@@ -701,6 +701,11 @@ public:
 
             expect (! fileDocument.sourceBytesEqualFile (sourceFile));
 
+            const auto preservedText = fileDocument.extractText (0);
+            const auto preservedMatches = fileDocument.findText ("AYRA", 0);
+            expect (preservedText.contains ("HELLO AYRA PDF"));
+            expectEquals (preservedMatches.size(), 1);
+
             juce::MemoryBlock preservedSnapshot;
             expect (fileDocument.saveToMemoryBlock (preservedSnapshot));
             expect (preservedSnapshot == fixture);

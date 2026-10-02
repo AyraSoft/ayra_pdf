@@ -119,3 +119,9 @@ Changing/replacing the external file after open therefore cannot change the alre
 its byte-preserving save result. `sourceBytesEqualFile()` performs exact byte comparison and never
 uses a fingerprint as proof of identity. PDFium captures a shared immutable byte snapshot under the
 process lock and performs file I/O/copies after releasing the global FPDF lock.
+
+
+On Apple, PDFKit text/search is built from a no-copy `CFData` view over the same immutable source
+snapshot used by CoreGraphics. The renderer keeps both the byte snapshot and the CFData/PDFDocument
+cache alive explicitly, so text/search after external file mutation still observes the originally
+opened document without a second full-size provider copy.
