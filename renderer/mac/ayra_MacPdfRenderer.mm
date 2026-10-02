@@ -20,6 +20,8 @@
 
 #include "../ayra_PdfByteSource.h"
 
+#include <utility>
+
 namespace ayra
 {
 
@@ -102,6 +104,41 @@ template <typename NativeRectangle>
 // Impl — stato ObjC nascosto agli header C++
 // ======================================================================
 
+struct RetiredMacPdfState final
+{
+    PDFDocument* textDocument { nil };
+    CFDataRef textData { nullptr };
+    CGPDFDocumentRef document { nullptr };
+    CGDataProviderRef provider { nullptr };
+    std::shared_ptr<const juce::MemoryBlock> pdfData;
+
+    void releaseResources() noexcept
+    {
+        releasePdfKitDocument (textDocument);
+        textDocument = nil;
+
+        if (textData != nullptr)
+        {
+            CFRelease (textData);
+            textData = nullptr;
+        }
+
+        if (document != nullptr)
+        {
+            CGPDFDocumentRelease (document);
+            document = nullptr;
+        }
+
+        if (provider != nullptr)
+        {
+            CGDataProviderRelease (provider);
+            provider = nullptr;
+        }
+
+        pdfData.reset();
+    }
+};
+
 struct MacPdfRenderer::Impl
 {
     mutable juce::CriticalSection apiLock;
@@ -166,16 +203,21 @@ struct MacPdfRenderer::Impl
         return true;
     }
 
-    void resetTextDocument() noexcept
+    void retireUnlocked (RetiredMacPdfState& retired) noexcept
     {
-        releasePdfKitDocument (textDocument);
+        retired.textDocument = textDocument;
         textDocument = nil;
 
-        if (textData != nullptr)
-        {
-            CFRelease (textData);
-            textData = nullptr;
-        }
+        retired.textData = textData;
+        textData = nullptr;
+
+        retired.document = document;
+        document = nullptr;
+
+        retired.provider = provider;
+        provider = nullptr;
+
+        retired.pdfData = std::move (pdfData);
     }
 };
 
@@ -198,29 +240,35 @@ bool MacPdfRenderer::loadFromFile (const juce::File& file) noexcept
     if (newPdfData == nullptr)
         return false;
 
-    const juce::ScopedLock lock (impl->apiLock);
+    RetiredMacPdfState retired;
 
-    CGDataProviderRef provider = CGDataProviderCreateWithData (
-        nullptr,
-        newPdfData->getData(),
-        newPdfData->getSize(),
-        nullptr);
-
-    if (provider == nullptr)
-        return false;
-
-    CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
-
-    if (newDocument == nullptr)
     {
-        CGDataProviderRelease (provider);
-        return false;
+        const juce::ScopedLock lock (impl->apiLock);
+
+        CGDataProviderRef provider = CGDataProviderCreateWithData (
+            nullptr,
+            newPdfData->getData(),
+            newPdfData->getSize(),
+            nullptr);
+
+        if (provider == nullptr)
+            return false;
+
+        CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
+
+        if (newDocument == nullptr)
+        {
+            CGDataProviderRelease (provider);
+            return false;
+        }
+
+        impl->retireUnlocked (retired);
+        impl->pdfData = newPdfData;
+        impl->provider = provider;
+        impl->document = newDocument;
     }
 
-    close();
-    impl->pdfData = newPdfData;
-    impl->provider = provider;
-    impl->document = newDocument;
+    retired.releaseResources();
     return true;
 }
 
@@ -237,30 +285,35 @@ bool MacPdfRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
         auto mutableData = std::make_shared<juce::MemoryBlock> (data, sizeBytes);
         std::shared_ptr<const juce::MemoryBlock> newPdfData = std::move (mutableData);
 
-        const juce::ScopedLock lock (impl->apiLock);
+        RetiredMacPdfState retired;
 
-        CGDataProviderRef provider = CGDataProviderCreateWithData (nullptr,
-                                                                   newPdfData->getData(),
-                                                                   newPdfData->getSize(),
-                                                                   nullptr);
-
-        if (provider == nullptr)
-            return false;
-
-        CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
-
-        if (newDocument == nullptr)
         {
-            CGDataProviderRelease (provider);
-            return false;
+            const juce::ScopedLock lock (impl->apiLock);
+
+            CGDataProviderRef provider = CGDataProviderCreateWithData (
+                nullptr,
+                newPdfData->getData(),
+                newPdfData->getSize(),
+                nullptr);
+
+            if (provider == nullptr)
+                return false;
+
+            CGPDFDocumentRef newDocument = CGPDFDocumentCreateWithProvider (provider);
+
+            if (newDocument == nullptr)
+            {
+                CGDataProviderRelease (provider);
+                return false;
+            }
+
+            impl->retireUnlocked (retired);
+            impl->pdfData = std::move (newPdfData);
+            impl->provider = provider;
+            impl->document = newDocument;
         }
 
-        // Provider e backing storage restano entrambi owned dal renderer per tutta la vita
-        // del documento. Nessun puntatore ai byte sopravvive al proprio owner.
-        close();
-        impl->pdfData = std::move (newPdfData);
-        impl->provider = provider;
-        impl->document = newDocument;
+        retired.releaseResources();
         return true;
     }
     catch (const std::bad_alloc&)
@@ -348,22 +401,14 @@ bool MacPdfRenderer::sourceBytesEqualFile (const juce::File& file) const noexcep
 
 void MacPdfRenderer::close() noexcept
 {
-    const juce::ScopedLock lock (impl->apiLock);
-    impl->resetTextDocument();
+    RetiredMacPdfState retired;
 
-    if (impl->document != nullptr)
     {
-        CGPDFDocumentRelease (impl->document);
-        impl->document = nullptr;
+        const juce::ScopedLock lock (impl->apiLock);
+        impl->retireUnlocked (retired);
     }
 
-    if (impl->provider != nullptr)
-    {
-        CGDataProviderRelease (impl->provider);
-        impl->provider = nullptr;
-    }
-
-    impl->pdfData.reset();
+    retired.releaseResources();
 }
 
 bool MacPdfRenderer::isLoaded() const noexcept
