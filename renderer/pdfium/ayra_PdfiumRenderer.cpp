@@ -13,46 +13,123 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
-// Implementazione PDFium di PdfiumRenderer.
-//
-// Fase 3: implementazione completa.
-//
-// Prerequisiti:
-//   - Header PDFium in:   third_party/pdfium/include/
-//   - Binari per Windows: third_party/pdfium/win/pdfium.lib + pdfium.dll
-//   - Binari per Linux:   third_party/pdfium/linux/libpdfium.a (o .so)
-//   - Binari per Android: third_party/pdfium/android/<abi>/libpdfium.so
-//
-// Setup automatico binari: ./scripts/setup_pdfium.sh
-//
-// Documentazione API PDFium: https://pdfium.googlesource.com/pdfium/
+// Backend PDFium current-only.
+// P01: lifecycle process-wide, load owned-memory, close e metadata.
+// P02/P03 completeranno save/render e text/search.
 
 #if JUCE_WINDOWS || JUCE_LINUX || JUCE_ANDROID
 
-// Include PDFium solo se gli header sono presenti
-// (guard: non fallire la compilazione se PDFium non e' ancora installato)
-#if __has_include("../../third_party/pdfium/include/fpdfview.h")
-  #include "../../third_party/pdfium/include/fpdfview.h"
-  #include "../../third_party/pdfium/include/fpdf_text.h"
-  #include "../../third_party/pdfium/include/fpdf_save.h"
-  #define AYRA_PDFIUM_AVAILABLE 1
-#endif
+#include "../ayra_PdfSafetyLimits.h"
+
+#include "../../third_party/pdfium/include/fpdfview.h"
+#include "../../third_party/pdfium/include/fpdf_edit.h"
+#include "../../third_party/pdfium/include/fpdf_transformpage.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <new>
 
 namespace ayra
 {
 
+namespace
+{
+
+struct PdfiumProcessState final
+{
+    juce::CriticalSection apiLock;
+    int rendererCount { 0 };
+};
+
+[[nodiscard]] PdfiumProcessState& getPdfiumProcessState() noexcept
+{
+    static PdfiumProcessState state;
+    return state;
+}
+
+void retainPdfiumLibrary() noexcept
+{
+    auto& state = getPdfiumProcessState();
+    const juce::ScopedLock lock (state.apiLock);
+
+    if (state.rendererCount == 0)
+    {
+        FPDF_LIBRARY_CONFIG config {};
+        config.version = 2;
+        config.m_pUserFontPaths = nullptr;
+        config.m_pIsolate = nullptr;
+        config.m_v8EmbedderSlot = 0;
+        FPDF_InitLibraryWithConfig (&config);
+    }
+
+    ++state.rendererCount;
+}
+
+void releasePdfiumLibrary() noexcept
+{
+    auto& state = getPdfiumProcessState();
+    const juce::ScopedLock lock (state.apiLock);
+
+    if (state.rendererCount <= 0)
+        return;
+
+    --state.rendererCount;
+
+    if (state.rendererCount == 0)
+        FPDF_DestroyLibrary();
+}
+
+[[nodiscard]] bool fitsFloat (double value) noexcept
+{
+    constexpr auto maxFloat = static_cast<double> (std::numeric_limits<float>::max());
+    return std::isfinite (value) && value >= -maxFloat && value <= maxFloat;
+}
+
+} // namespace
+
 // ======================================================================
-// Impl — stato PDFium nascosto agli header C++
+// Impl — documento/backing bytes; tutte le chiamate FPDF richiedono apiLock.
 // ======================================================================
 
 struct PdfiumRenderer::Impl
 {
-#ifdef AYRA_PDFIUM_AVAILABLE
-    FPDF_DOCUMENT document { nullptr };  ///< Documento PDFium corrente
-#endif
-    juce::MemoryBlock pdfData;           ///< Copia del PDF in memoria (richiesta da PDFium per FPDF_LoadMemDocument)
+    FPDF_DOCUMENT document { nullptr };
+    std::unique_ptr<juce::MemoryBlock> pdfData;
 
-    // TODO: Fase 3 — aggiungere cache pagine, stato inizializzazione PDFium
+    void closeUnlocked() noexcept
+    {
+        if (document != nullptr)
+        {
+            FPDF_CloseDocument (document);
+            document = nullptr;
+        }
+
+        pdfData.reset();
+    }
+
+    [[nodiscard]] bool loadOwnedData (std::unique_ptr<juce::MemoryBlock> newData) noexcept
+    {
+        if (newData == nullptr || newData->getSize() == 0)
+            return false;
+
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
+
+        FPDF_DOCUMENT newDocument = FPDF_LoadMemDocument64 (newData->getData(),
+                                                            newData->getSize(),
+                                                            nullptr);
+
+        if (newDocument == nullptr)
+            return false;
+
+        closeUnlocked();
+        pdfData = std::move (newData);
+        document = newDocument;
+        return true;
+    }
 };
 
 // ======================================================================
@@ -62,93 +139,193 @@ struct PdfiumRenderer::Impl
 PdfiumRenderer::PdfiumRenderer()
     : impl (std::make_unique<Impl>())
 {
-#ifdef AYRA_PDFIUM_AVAILABLE
-    // TODO: Fase 3 — FPDF_InitLibrary() (singleton — usare reference count)
-#endif
+    retainPdfiumLibrary();
 }
 
 PdfiumRenderer::~PdfiumRenderer()
 {
     close();
-#ifdef AYRA_PDFIUM_AVAILABLE
-    // TODO: Fase 3 — FPDF_DestroyLibrary() (solo quando ref count == 0)
-#endif
+    releasePdfiumLibrary();
 }
 
 bool PdfiumRenderer::loadFromFile (const juce::File& file) noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDF_LoadDocument(path, password)
-    return false;
+    try
+    {
+        auto input = file.createInputStream();
+
+        if (input == nullptr)
+            return false;
+
+        const auto length = input->getTotalLength();
+
+        if (length <= 0
+            || static_cast<std::uint64_t> (length) > detail::maxDocumentBytes
+            || length > static_cast<juce::int64> (std::numeric_limits<int>::max()))
+        {
+            return false;
+        }
+
+        auto newData = std::make_unique<juce::MemoryBlock>();
+        newData->setSize (static_cast<size_t> (length), false);
+
+        auto* destination = static_cast<std::uint8_t*> (newData->getData());
+        int bytesRemaining = static_cast<int> (length);
+        size_t offset = 0;
+
+        while (bytesRemaining > 0)
+        {
+            constexpr int maxReadChunk = 1024 * 1024;
+            const int requested = std::min (bytesRemaining, maxReadChunk);
+            const int bytesRead = input->read (destination + offset, requested);
+
+            if (bytesRead <= 0 || bytesRead > requested)
+                return false;
+
+            offset += static_cast<size_t> (bytesRead);
+            bytesRemaining -= bytesRead;
+        }
+
+        return impl->loadOwnedData (std::move (newData));
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 bool PdfiumRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDF_LoadMemDocument(data, size, password)
-    return false;
+    if (data == nullptr || sizeBytes == 0
+        || static_cast<std::uint64_t> (sizeBytes) > detail::maxDocumentBytes)
+    {
+        return false;
+    }
+
+    try
+    {
+        auto newData = std::make_unique<juce::MemoryBlock>();
+        newData->replaceAll (data, sizeBytes);
+        return impl->loadOwnedData (std::move (newData));
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 bool PdfiumRenderer::saveToFile (const juce::File& destFile) const noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDF_SaveAsCopy con FPDF_FILEWRITE
+    juce::ignoreUnused (destFile);
+    jassertfalse; // P02
     return false;
 }
 
 bool PdfiumRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDF_SaveAsCopy su MemoryBlock custom writer
+    juce::ignoreUnused (destData);
+    jassertfalse; // P02
     return false;
 }
 
 void PdfiumRenderer::close() noexcept
 {
-#ifdef AYRA_PDFIUM_AVAILABLE
-    if (impl->document != nullptr)
-    {
-        // TODO: Fase 3 — FPDF_CloseDocument(impl->document);
-        impl->document = nullptr;
-    }
-#endif
-    impl->pdfData.reset();
+    auto& state = getPdfiumProcessState();
+    const juce::ScopedLock lock (state.apiLock);
+    impl->closeUnlocked();
 }
 
 bool PdfiumRenderer::isLoaded() const noexcept
 {
-#ifdef AYRA_PDFIUM_AVAILABLE
+    auto& state = getPdfiumProcessState();
+    const juce::ScopedLock lock (state.apiLock);
     return impl->document != nullptr;
-#else
-    return false;
-#endif
 }
 
 int PdfiumRenderer::getPageCount() const noexcept
 {
-#ifdef AYRA_PDFIUM_AVAILABLE
-    // TODO: Fase 3 — return FPDF_GetPageCount(impl->document);
-#endif
-    return 0;
+    auto& state = getPdfiumProcessState();
+    const juce::ScopedLock lock (state.apiLock);
+
+    if (impl->document == nullptr)
+        return 0;
+
+    const int count = FPDF_GetPageCount (impl->document);
+    return count > 0 ? count : 0;
 }
 
 PdfPage PdfiumRenderer::getPage (int pageIndex) const noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDF_GetPageWidth/Height, FPDF_GetPageRotation
-    return {};
+    if (pageIndex < 0)
+        return {};
+
+    auto& state = getPdfiumProcessState();
+    const juce::ScopedLock lock (state.apiLock);
+
+    if (impl->document == nullptr)
+        return {};
+
+    const int pageCount = FPDF_GetPageCount (impl->document);
+
+    if (pageCount <= 0 || pageIndex >= pageCount)
+        return {};
+
+    FPDF_PAGE page = FPDF_LoadPage (impl->document, pageIndex);
+
+    if (page == nullptr)
+        return {};
+
+    float left = 0.0f;
+    float bottom = 0.0f;
+    float right = 0.0f;
+    float top = 0.0f;
+
+    const bool hasMediaBox = FPDFPage_GetMediaBox (page, &left, &bottom, &right, &top) != 0;
+    const int rotationQuarterTurns = FPDFPage_GetRotation (page);
+
+    FPDF_ClosePage (page);
+
+    if (!hasMediaBox || rotationQuarterTurns < 0 || rotationQuarterTurns > 3)
+        return {};
+
+    const double width = static_cast<double> (right) - static_cast<double> (left);
+    const double height = static_cast<double> (top) - static_cast<double> (bottom);
+
+    if (!fitsFloat (left) || !fitsFloat (bottom)
+        || !fitsFloat (width) || !fitsFloat (height)
+        || width <= 0.0 || height <= 0.0)
+    {
+        return {};
+    }
+
+    PdfPage result;
+    result.index = pageIndex;
+    result.bounds = { left,
+                      bottom,
+                      static_cast<float> (width),
+                      static_cast<float> (height) };
+    result.rotation = rotationQuarterTurns * 90;
+    return result;
 }
 
 juce::Image PdfiumRenderer::renderPage (int pageIndex, float scale) noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDF_RenderPageBitmap su buffer JUCE
+    juce::ignoreUnused (pageIndex, scale);
+    jassertfalse; // P02
     return {};
 }
 
 juce::Array<PdfSearchResult> PdfiumRenderer::findText (const juce::String& query, int pageIndex) noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDFText_FindStart/FindNext
+    juce::ignoreUnused (query, pageIndex);
+    jassertfalse; // P03
     return {};
 }
 
 juce::String PdfiumRenderer::extractText (int pageIndex) noexcept
 {
-    jassertfalse; // TODO: Fase 3 — FPDFText_LoadPage + FPDFText_GetText
+    juce::ignoreUnused (pageIndex);
+    jassertfalse; // P03
     return {};
 }
 

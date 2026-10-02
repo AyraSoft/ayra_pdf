@@ -30,11 +30,18 @@ namespace ayra
  *  e gli header in:
  *    third_party/pdfium/include/
  *
- *  Fase 3: implementazione completa.
+ *  P01 implementa lifecycle/load/metadata; P02 e P03 completano save/render/text.
+ *
+ *  PDFium non e' thread-safe: il backend serializza internamente tutte le chiamate
+ *  FPDF con un mutex process-wide condiviso tra tutte le istanze.
  *
  *  Usa il pattern Pimpl per isolare i tipi PDFium (FPDF_DOCUMENT, FPDF_PAGE)
  *  dagli header C++ — necessario per evitare contaminazione degli altri moduli
  *  e per rendere l'header compilabile anche senza PDFium installato.
+ *
+ *  @note Una singola istanza non puo' essere distrutta mentre un altro thread la usa;
+ *        il mutex globale serializza PDFium, non sostituisce il lifetime ownership del caller.
+ *  @note Tutte le operazioni PDFium sono non realtime-safe.
  *
  *  @see PdfRenderer, PdfDocument, MacPdfRenderer
  */
