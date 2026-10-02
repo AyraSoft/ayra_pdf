@@ -310,28 +310,23 @@ juce::Colour sampleDisplayRectCentre (const juce::Image& image,
 #if ! defined (AYRA_PDF_HEADLESS) && JUCE_MODAL_LOOPS_PERMITTED
 bool waitForPdfWorkerIdle (int timeoutMilliseconds)
 {
-    const auto deadline = juce::Time::getMillisecondCounter()
-                        + static_cast<juce::uint32> (timeoutMilliseconds);
-
-    for (;;)
+    try
     {
-        if (getPdfRenderPool().getNumJobs() == 0)
-            return true;
+        auto barrier = std::make_shared<juce::WaitableEvent>();
 
-        auto* job = getPdfRenderPool().getJob (0);
+        // The module pool has one worker. A barrier queued after the current
+        // render/search jobs signals only after all previously queued work has
+        // completed naturally. shared_ptr keeps the event alive on timeout.
+        getPdfRenderPool().addJob ([barrier]
+        {
+            barrier->signal();
+        });
 
-        if (job == nullptr)
-            continue;
-
-        const auto now = juce::Time::getMillisecondCounter();
-
-        if (now >= deadline)
-            return false;
-
-        const int remaining = static_cast<int> (deadline - now);
-
-        if (!getPdfRenderPool().waitForJobToFinish (job, remaining))
-            return false;
+        return barrier->wait (timeoutMilliseconds);
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
     }
 }
 
