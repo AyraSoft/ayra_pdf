@@ -13,7 +13,7 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
-@interface PDFView : NSView
+@interface AyraLegacyPDFView : NSView
 
 @property (nonatomic, assign) CGPDFDocumentRef pdfDocument;
 @property (nonatomic, assign) NSInteger currentPage;
@@ -26,7 +26,7 @@
 
 @end
 
-@implementation PDFView
+@implementation AyraLegacyPDFView
 
 - (instancetype)initWithFrame:(NSRect)frameRect
 {

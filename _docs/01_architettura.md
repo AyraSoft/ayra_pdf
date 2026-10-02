@@ -35,7 +35,7 @@ ayra_pdf/
 +-- pdf_component/              <- LAYER LEGACY (rimosso in Fase 6)
 |   +-- PDFComponent.h/.cpp          <- facade v1 (deprecated)
 |   +-- Mac_PDF_core/
-|       +-- PDFView.m                <- NSView custom (renderizza pagina)
+|       +-- PDFView.m                <- AyraLegacyPDFView, NSView custom legacy
 |       +-- MacPDFComponent.mm       <- MacPDFViewComponent (wrapper ObjC)
 |
 +-- third_party/

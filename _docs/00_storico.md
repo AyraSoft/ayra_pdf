@@ -23,7 +23,7 @@ Il backend macOS era composto da due file Objective-C:
 - `pdf_component/Mac_PDF_core/PDFView.m` — NSView custom che wrappa `CGPDFDocumentRef`, gestisce zoom,
   pan e rendering tramite `drawRect:`. Usa `CGPDFPageGetDrawingTransform` + `CGContextDrawPDFPage`.
 - `pdf_component/Mac_PDF_core/MacPDFComponent.mm` — classe C++/ObjC `MacPDFViewComponent` che alloca
-  `PDFView`, espone l'API richiesta da `PDFComponent` (load, zoom, pan, export, page navigation).
+  `AyraLegacyPDFView`, espone l'API richiesta da `PDFComponent` (load, zoom, pan, export, page navigation).
 
 Il rendering era funzionante ma con diversi bug (vedi sezione Bug noti).
 

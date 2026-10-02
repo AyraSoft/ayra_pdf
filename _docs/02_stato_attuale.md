@@ -24,7 +24,7 @@ Ricognizione effettuata su `main@fc60d44e325265b85a1616205157ee871d95350a` prima
 dell'avvio dell'implementazione del 2026-10-02.
 
 - L'architettura v2 (engine / renderer / widget) esiste come skeleton.
-- Il solo path legacy operativo e' macOS/AppKit (`PDFView` deriva da `NSView`); non esiste un legacy iOS funzionante.
+- Il solo path legacy operativo e' macOS/AppKit (`AyraLegacyPDFView` deriva da `NSView`); non esiste un legacy iOS funzionante.
 - `MacPdfRenderer` M01-M04 e' implementato staticamente; `PdfiumRenderer`, `PdfDocument` e gran parte di `PdfViewComponent` hanno ancora lavoro pending.
 - Code search AyraSoft non ha trovato consumer di `PDFComponent` fuori da questo repository;
   l'audit va ripetuto immediatamente prima del cutover.
@@ -180,7 +180,7 @@ Build/test runtime restano **external pending**.
 ### Nota piattaforma Apple
 
 Il backend v2 e' scritto sotto `JUCE_MAC || JUCE_IOS` e usa framework disponibili su entrambe
-le piattaforme. Il legacy invece e' AppKit/macOS-specifico (`PDFView : NSView`): finche' C01
+le piattaforme. Il legacy invece e' AppKit/macOS-specifico (`AyraLegacyPDFView : NSView`): finche' C01
 non rimuove quel percorso, l'integrazione iOS dell'intero modulo NON e' dichiarata verificata.
 
 ## Change Contract — D01 PdfDocument facade Apple

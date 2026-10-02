@@ -42,7 +42,7 @@ public:
     
     MacPDFViewComponent()
     {
-        pdfView = [[PDFView alloc] initWithFrame:NSMakeRect(0, 0, getWidth(), getHeight())];
+        pdfView = [[AyraLegacyPDFView alloc] initWithFrame:NSMakeRect(0, 0, getWidth(), getHeight())];
         pdfView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 //        previousArea = getLocalBounds();
 //        setCurrentPageBounds(previousArea.toFloat());
@@ -304,7 +304,7 @@ private:
     
     friend class PDFComponent;
     
-    PDFView* pdfView;
+    AyraLegacyPDFView* pdfView;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MacPDFViewComponent)
 };
