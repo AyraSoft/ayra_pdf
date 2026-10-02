@@ -23,11 +23,19 @@
 #if JUCE_MAC || JUCE_IOS
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
+#include <new>
 
 namespace ayra
 {
+
+namespace
+{
+constexpr int maxRasterDimension = 16384;
+constexpr std::uint64_t maxRasterPixels = 64ull * 1024ull * 1024ull;
+}
 
 // ======================================================================
 // Impl — stato ObjC nascosto agli header C++
@@ -208,8 +216,118 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
 juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
 {
-    jassertfalse; // TODO: Fase 2
-    return {};
+    if (!std::isfinite (scale) || scale <= 0.0f)
+        return {};
+
+    const auto pageInfo = getPage (pageIndex);
+
+    if (!pageInfo.isValid())
+        return {};
+
+    const bool quarterTurn = pageInfo.rotation == 90 || pageInfo.rotation == 270;
+    const double widthPoints = quarterTurn ? static_cast<double> (pageInfo.bounds.getHeight())
+                                           : static_cast<double> (pageInfo.bounds.getWidth());
+    const double heightPoints = quarterTurn ? static_cast<double> (pageInfo.bounds.getWidth())
+                                            : static_cast<double> (pageInfo.bounds.getHeight());
+    const double widthPixels = std::ceil (widthPoints * static_cast<double> (scale));
+    const double heightPixels = std::ceil (heightPoints * static_cast<double> (scale));
+
+    if (!std::isfinite (widthPixels) || !std::isfinite (heightPixels)
+        || widthPixels <= 0.0 || heightPixels <= 0.0
+        || widthPixels > static_cast<double> (maxRasterDimension)
+        || heightPixels > static_cast<double> (maxRasterDimension))
+    {
+        return {};
+    }
+
+    const int width = static_cast<int> (widthPixels);
+    const int height = static_cast<int> (heightPixels);
+    const auto pixelCount = static_cast<std::uint64_t> (width)
+                          * static_cast<std::uint64_t> (height);
+
+    if (pixelCount > maxRasterPixels)
+        return {};
+
+    const auto pageNumber = static_cast<size_t> (pageIndex) + 1u;
+    CGPDFPageRef page = CGPDFDocumentGetPage (impl->document, pageNumber);
+
+    if (page == nullptr)
+        return {};
+
+    try
+    {
+        juce::SoftwareImageType imageType;
+        juce::Image image (juce::Image::ARGB, width, height, true, imageType);
+
+        if (!image.isValid())
+            return {};
+
+        juce::Image::BitmapData bitmap (image, juce::Image::BitmapData::writeOnly);
+
+        if (bitmap.data == nullptr
+            || bitmap.pixelFormat != juce::Image::ARGB
+            || bitmap.pixelStride != static_cast<int> (sizeof (juce::PixelARGB))
+            || bitmap.lineStride <= 0)
+        {
+            return {};
+        }
+
+        CGColorSpaceRef colourSpace = CGColorSpaceCreateDeviceRGB();
+
+        if (colourSpace == nullptr)
+            return {};
+
+        const CGBitmapInfo bitmapInfo = static_cast<CGBitmapInfo> (
+            kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host);
+
+        CGContextRef context = CGBitmapContextCreate (bitmap.data,
+                                                      static_cast<size_t> (width),
+                                                      static_cast<size_t> (height),
+                                                      8,
+                                                      static_cast<size_t> (bitmap.lineStride),
+                                                      colourSpace,
+                                                      bitmapInfo);
+        CGColorSpaceRelease (colourSpace);
+
+        if (context == nullptr)
+            return {};
+
+        // PDF pages have an implicit white backdrop. Keep the renderer output
+        // deterministic and identical across CoreGraphics/PDFium backends.
+        CGContextSetRGBFillColor (context, 1.0, 1.0, 1.0, 1.0);
+        CGContextFillRect (context, CGRectMake (0.0, 0.0,
+                                                static_cast<CGFloat> (width),
+                                                static_cast<CGFloat> (height)));
+
+        CGContextSaveGState (context);
+
+        // Raw Quartz bitmap contexts are Y-up, while JUCE row 0 is the top line.
+        // Flip once at the device boundary, then let CoreGraphics map PDF user
+        // space (including /Rotate) into the destination rectangle.
+        CGContextTranslateCTM (context, 0.0, static_cast<CGFloat> (height));
+        CGContextScaleCTM (context, 1.0, -1.0);
+
+        const CGRect destination = CGRectMake (0.0, 0.0,
+                                               static_cast<CGFloat> (width),
+                                               static_cast<CGFloat> (height));
+        const auto transform = CGPDFPageGetDrawingTransform (page,
+                                                             kCGPDFMediaBox,
+                                                             destination,
+                                                             0,
+                                                             true);
+
+        CGContextConcatCTM (context, transform);
+        CGContextClipToRect (context, CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
+        CGContextDrawPDFPage (context, page);
+        CGContextRestoreGState (context);
+        CGContextRelease (context);
+
+        return image;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
 }
 
 juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query, int pageIndex) noexcept
