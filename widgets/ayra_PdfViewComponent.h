@@ -94,7 +94,9 @@ public:
     /** Pagina visualizzata 1-based; -1 quando non esiste una pagina attiva. */
     [[nodiscard]] int getCurrentPageOnScreen() const;
 
-    /** Naviga a una pagina utente 1-based. Valori fuori range non modificano lo stato. */
+    /** Naviga a una pagina utente 1-based. Valori fuori range non modificano lo stato.
+     *  Per compatibilita' con PDFComponent, un cambio pagina riuscito resetta lo zoom a 1.0.
+     */
     void setPageNumber (int pageNumber);
 
     /** Dimensioni native visuali della pagina corrente, in punti PDF e dopo /Rotate. */

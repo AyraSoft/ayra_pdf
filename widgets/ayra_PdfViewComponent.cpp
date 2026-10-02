@@ -382,6 +382,7 @@ void PdfViewComponent::setPageNumber (int pageNumber)
         return;
 
     currentPage = pageNumber;
+    currentZoom = 1.0f;
     topLeft = {};
     currentPageInfo = pageInfo;
     clampTopLeft();

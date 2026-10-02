@@ -263,6 +263,12 @@ public:
             expectEquals (listener.closed, 0);
             expectEquals (callbackClosed, 0);
 
+            view.setCurrentPageZoom (2.0f, { 0.0f, 0.0f });
+            expectWithinAbsoluteError (view.getCurrentPageZoom(), 2.0f, 0.0001f);
+            view.setPageNumber (2);
+            expectEquals (view.getCurrentPageOnScreen(), 2);
+            expectWithinAbsoluteError (view.getCurrentPageZoom(), 1.0f, 0.0001f);
+
             view.setDocument (nullptr);
             expect (! view.thereIsADocumentLoaded());
             expectEquals (view.getTotPagesNum(), -1);

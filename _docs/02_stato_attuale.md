@@ -69,7 +69,7 @@ renderer concreti.
 - render/search off Message Thread; publication via cancellable `AsyncUpdater`;
 - richieste coalesced;
 - cache raster con generation token, separata dai metadata sincroni della pagina corrente;
-- navigazione UI 1-based;
+- navigazione UI 1-based con reset zoom 1.0 sul cambio pagina;
 - zoom, pan, wheel, pinch;
 - HiDPI;
 - overlay search ruotato correttamente;

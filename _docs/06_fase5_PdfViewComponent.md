@@ -42,7 +42,8 @@ Il raw owner nel `RenderState` viene letto/scritto soltanto sul Message Thread. 
 Zoom:
 - range 0.1x..10x;
 - anchor point stabile;
-- NaN/Inf rifiutati.
+- NaN/Inf rifiutati;
+- cambio pagina riuscito resetta a 1.0 per compatibilita' `PDFComponent`.
 
 Pan:
 - drag;
