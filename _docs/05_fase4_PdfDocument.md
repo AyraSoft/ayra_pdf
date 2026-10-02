@@ -14,8 +14,7 @@ il codice reale che istanzia il renderer corretto e delega ogni metodo.
 `PdfDocument` non ha logica propria: e' una factory + facade. Tutta la logica di rendering
 vive nei renderer concreti.
 
-**Dipendenze**: Fase 4 puo' essere completata parzialmente — ad esempio attivare solo
-`MacPdfRenderer` su macOS mentre `PdfiumRenderer` e' ancora stub, e viceversa.
+**Stato corrente**: la factory/delega e' implementata. Il percorso Apple e' reale; Win/Linux/Android delegano correttamente al renderer PDFium, che resta incompleto fino a P01-P03.
 
 ---
 
@@ -191,20 +190,18 @@ PdfDocument::PdfDocument()
 }
 ```
 
-Con questa configurazione, su macOS tutto funziona (renderer concreto), su Win/Linux i
-metodi ritornano `false` / immagine invalida (stub del PdfiumRenderer) senza `jassertfalse`
-(che e' solo in Debug). E' una situazione accettabile per sviluppo incrementale.
+Questa e' ora la configurazione corrente: la facade non contiene fallback. Apple delega al backend v2 implementato; Win/Linux/Android delegano al backend PDFium corrente, ancora incompleto.
 
 ---
 
 ## Checklist Fase 4
 
-- [ ] Attendere che Fase 2 (MacPdfRenderer) sia completa
-- [ ] Attendere che Fase 3 (PdfiumRenderer) sia completa (o accettare attivazione parziale)
-- [ ] Rimuovere costruttore commentato e sostituire con factory attiva
-- [ ] Implementare tutti i metodi di delega (vedi sezione sopra)
-- [ ] Rimuovere tutti i `jassertfalse` dai metodi di PdfDocument
-- [ ] Verificare inclusione renderers in `ayra_pdf.cpp` (gia' nell'ordine corretto)
-- [ ] Test macOS: `PdfDocument doc; doc.open(file); doc.renderPage(0, 1.0f)` produce immagine valida
-- [ ] Test Win/Linux: stesso test con PdfiumRenderer
-- [ ] Test headless: compilare con `AYRA_PDF_HEADLESS` e usare `PdfDocument` senza widget
+- [x] Backend Apple M01-M04 completo staticamente
+- [ ] Backend PDFium P01-P03 (necessario per D02 cross-platform)
+- [x] Factory compile-time attiva
+- [x] Tutti i metodi delegano 1:1 al renderer
+- [x] Nessun `jassertfalse`/TODO residuo in `PdfDocument.cpp`
+- [x] Ordine aggregatore verificato staticamente: renderer prima dell'engine
+- [ ] External macOS/iOS: open/render/search/extract/save via `PdfDocument`
+- [ ] External Win/Linux/Android dopo P01-P03
+- [ ] External headless dopo H01

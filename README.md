@@ -79,7 +79,7 @@ L'engine non include mai header GUI. Un agente server-side o un renderer offline
 
 > **Stato reale (2 ottobre 2026):** la matrice sopra descrive il target v2, non una
 > certificazione runtime. `MacPdfRenderer` M01-M04 e' implementato e static-audited
-> (CoreGraphics + PDFKit), ma `PdfDocument` non e' ancora collegato al renderer.
+> (CoreGraphics + PDFKit) e `PdfDocument` e' ora collegato al renderer tramite factory/delega.
 > `PdfiumRenderer` e `PdfViewComponent` restano incompleti. Il solo path legacy
 > attualmente operativo e' **macOS/AppKit**; il legacy usa `NSView` e non costituisce
 > un'implementazione iOS. Build/test/CI restano external pending.
@@ -412,8 +412,8 @@ e' piu' la source of truth dell'avanzamento. Il piano operativo corrente usa mic
 
 Sintesi al 2026-10-02:
 - renderer Apple v2 M01-M04: **done (static)**;
-- `PdfDocument`: D01 in progress;
-- renderer PDFium: stub;
+- `PdfDocument`: D01 **done (static)**;
+- renderer PDFium: P01 in progress;
 - `PdfViewComponent`: parziale;
 - legacy operativo: macOS/AppKit soltanto, destinato a rimozione current-only;
 - iOS v2: codice backend presente ma integrazione end-to-end da verificare esternamente;

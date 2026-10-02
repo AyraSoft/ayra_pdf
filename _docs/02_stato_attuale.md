@@ -41,8 +41,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **M02** | Mac renderer | Rasterizzazione pagina -> `juce::Image` con validazione scale/size | M01 | **done (static)** |
 | **M03** | Mac renderer | Save file + save memory byte-preserving | M01 | **done (static)** |
 | **M04** | Mac renderer | Estrazione testo + ricerca PDFKit con bounds esatti | M01 | **done (static)** |
-| **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | **in progress** |
-| **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | pending |
+| **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | **done (static)** |
+| **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | **in progress** |
 | **P02** | PDFium | Render + save file/memory | P01 | pending |
 | **P03** | PDFium | Extract/search con bounds esatti | P01 | pending |
 | **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | pending |
@@ -218,6 +218,11 @@ nel facade alcuna logica PDF.
 - diff audit statico completato;
 - build/test macOS+iOS: **external pending**.
 
+**Esito D01 (2026-10-02)**: `PdfDocument` e' ora una factory/facade reale e priva di
+stub. Il diff contiene soltanto selezione compile-time del renderer e delega 1:1. Il
+percorso Apple usa il `MacPdfRenderer` M01-M04; i target non-Apple restano funzionalmente
+bloccati dal backend PDFium fino a P01-P03.
+
 ---
 
 ## Tabella riepilogativa
@@ -227,7 +232,7 @@ nel facade alcuna logica PDF.
 | `engine/ayra_PdfPage.h` | ✅ completo | tutte | 1 |
 | `engine/ayra_PdfSearchResult.h` | ✅ completo | tutte | 1 |
 | `engine/ayra_PdfDocument.h` | ✅ interfaccia completa | tutte | 1 |
-| `engine/ayra_PdfDocument.cpp` | ❌ stub (tutti jassertfalse) | tutte | 4 |
+| `engine/ayra_PdfDocument.cpp` | ✅ factory/delega completa; Apple reale, PDFium dipende da P01-P03 | tutte | 4 |
 | `renderer/ayra_PdfRenderer.h` | ✅ interfaccia completa | tutte | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.mm` | ✅ M01-M04 completi staticamente | macOS/iOS | 2 |
