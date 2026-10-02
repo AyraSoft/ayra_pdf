@@ -157,7 +157,7 @@ non garantisce bounds corretti.
 
 **Acceptance criteria M04**:
 - `extractText` usa `PDFPage.string` e preserva Unicode;
-- `findText` usa `PDFDocument findString:withOptions:` e `PDFSelection boundsForPage:`;
+- `findText` cerca per pagina su `PDFPage.string`, converte ogni range con `selectionForRange:` e usa `PDFSelection boundsForPage:`;
 - nessun `jassertfalse` resta nei metodi Mac;
 - nessun bounds placeholder;
 - static diff audit completato;
