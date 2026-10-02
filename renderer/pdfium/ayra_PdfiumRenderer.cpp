@@ -162,7 +162,8 @@ private:
 [[nodiscard]] bool makePdfiumWideString (const juce::String& source,
                                          std::vector<FPDF_WCHAR>& destination)
 {
-    static_assert (sizeof (FPDF_WCHAR) == sizeof (juce::CharPointer_UTF16::CharType));
+    using JuceUtf16Unit = juce::CharPointer_UTF16::CharType;
+    static_assert (sizeof (FPDF_WCHAR) == sizeof (JuceUtf16Unit));
 
     const auto sourceUtf8Bytes = static_cast<std::uint64_t> (source.getNumBytesAsUTF8());
 
@@ -173,27 +174,34 @@ private:
     }
 
     const size_t capacityUnits = static_cast<size_t> (source.length()) * 2u + 1u;
-    destination.assign (capacityUnits, 0);
+    std::vector<JuceUtf16Unit> juceUnits (capacityUnits, 0);
 
-    const auto bytesWritten = source.copyToUTF16 (
-        reinterpret_cast<juce::CharPointer_UTF16::CharType*> (destination.data()),
-        destination.size() * sizeof (FPDF_WCHAR));
+    const auto bytesWritten = source.copyToUTF16 (juceUnits.data(),
+                                                  juceUnits.size() * sizeof (JuceUtf16Unit));
 
-    if (bytesWritten < sizeof (FPDF_WCHAR)
-        || (bytesWritten % sizeof (FPDF_WCHAR)) != 0
-        || bytesWritten > destination.size() * sizeof (FPDF_WCHAR))
+    if (bytesWritten < sizeof (JuceUtf16Unit)
+        || (bytesWritten % sizeof (JuceUtf16Unit)) != 0
+        || bytesWritten > juceUnits.size() * sizeof (JuceUtf16Unit))
     {
         return false;
     }
 
-   #if JUCE_BIG_ENDIAN
-    const size_t unitsWritten = bytesWritten / sizeof (FPDF_WCHAR);
+    const size_t unitsWritten = bytesWritten / sizeof (JuceUtf16Unit);
+    destination.assign (unitsWritten, 0);
 
     for (size_t i = 0; i < unitsWritten; ++i)
-        destination[i] = byteSwap16 (destination[i]);
-   #endif
+    {
+        FPDF_WCHAR unit = static_cast<FPDF_WCHAR> (
+            static_cast<std::uint16_t> (juceUnits[i]));
 
-    return destination.front() != 0;
+       #if JUCE_BIG_ENDIAN
+        unit = byteSwap16 (unit);
+       #endif
+
+        destination[i] = unit;
+    }
+
+    return !destination.empty() && destination.front() != 0 && destination.back() == 0;
 }
 
 [[nodiscard]] bool textRangeToJuceString (FPDF_TEXTPAGE textPage,
@@ -201,7 +209,8 @@ private:
                                           int count,
                                           juce::String& destination)
 {
-    static_assert (sizeof (FPDF_WCHAR) == sizeof (juce::CharPointer_UTF16::CharType));
+    using JuceUtf16Unit = juce::CharPointer_UTF16::CharType;
+    static_assert (sizeof (FPDF_WCHAR) == sizeof (JuceUtf16Unit));
 
     if (textPage == nullptr || startIndex < 0 || count <= 0
         || count > detail::maxTextCodeUnitsPerPage)
@@ -209,25 +218,30 @@ private:
         return false;
     }
 
-    std::vector<FPDF_WCHAR> buffer (static_cast<size_t> (count) + 1u, 0);
+    std::vector<FPDF_WCHAR> pdfiumUnits (static_cast<size_t> (count) + 1u, 0);
     const int written = FPDFText_GetText (textPage,
                                           startIndex,
                                           count,
-                                          buffer.data());
+                                          pdfiumUnits.data());
 
-    if (written <= 0 || written > static_cast<int> (buffer.size()))
+    if (written <= 0 || written > static_cast<int> (pdfiumUnits.size()))
         return false;
 
-    buffer[static_cast<size_t> (written - 1)] = 0;
+    std::vector<JuceUtf16Unit> juceUnits (static_cast<size_t> (written), 0);
 
-   #if JUCE_BIG_ENDIAN
     for (int i = 0; i < written - 1; ++i)
-        buffer[static_cast<size_t> (i)] = byteSwap16 (buffer[static_cast<size_t> (i)]);
-   #endif
+    {
+        FPDF_WCHAR unit = pdfiumUnits[static_cast<size_t> (i)];
 
-    destination = juce::String (
-        juce::CharPointer_UTF16 (
-            reinterpret_cast<const juce::CharPointer_UTF16::CharType*> (buffer.data())));
+       #if JUCE_BIG_ENDIAN
+        unit = byteSwap16 (unit);
+       #endif
+
+        juceUnits[static_cast<size_t> (i)] = static_cast<JuceUtf16Unit> (unit);
+    }
+
+    juceUnits.back() = 0;
+    destination = juce::String (juce::CharPointer_UTF16 (juceUnits.data()));
 
     return static_cast<std::uint64_t> (destination.getNumBytesAsUTF8())
         <= detail::maxTextUtf8BytesPerPage;
