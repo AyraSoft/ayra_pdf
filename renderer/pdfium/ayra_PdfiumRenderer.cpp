@@ -88,6 +88,38 @@ void releasePdfiumLibrary() noexcept
     return std::isfinite (value) && value >= -maxFloat && value <= maxFloat;
 }
 
+class ScopedPdfiumPage final
+{
+public:
+    explicit ScopedPdfiumPage (FPDF_PAGE pageIn) noexcept : page (pageIn) {}
+    ~ScopedPdfiumPage()
+    {
+        if (page != nullptr)
+            FPDF_ClosePage (page);
+    }
+
+    [[nodiscard]] FPDF_PAGE get() const noexcept { return page; }
+
+private:
+    FPDF_PAGE page { nullptr };
+};
+
+class ScopedPdfiumBitmap final
+{
+public:
+    explicit ScopedPdfiumBitmap (FPDF_BITMAP bitmapIn) noexcept : bitmap (bitmapIn) {}
+    ~ScopedPdfiumBitmap()
+    {
+        if (bitmap != nullptr)
+            FPDFBitmap_Destroy (bitmap);
+    }
+
+    [[nodiscard]] FPDF_BITMAP get() const noexcept { return bitmap; }
+
+private:
+    FPDF_BITMAP bitmap { nullptr };
+};
+
 } // namespace
 
 // ======================================================================
@@ -216,16 +248,51 @@ bool PdfiumRenderer::loadFromMemory (const void* data, size_t sizeBytes) noexcep
 
 bool PdfiumRenderer::saveToFile (const juce::File& destFile) const noexcept
 {
-    juce::ignoreUnused (destFile);
-    jassertfalse; // P02
-    return false;
+    try
+    {
+        juce::MemoryBlock snapshot;
+
+        {
+            auto& state = getPdfiumProcessState();
+            const juce::ScopedLock lock (state.apiLock);
+
+            if (impl->document == nullptr || impl->pdfData == nullptr || impl->pdfData->getSize() == 0)
+                return false;
+
+            snapshot.replaceAll (impl->pdfData->getData(), impl->pdfData->getSize());
+        }
+
+        return destFile.replaceWithData (snapshot.getData(), snapshot.getSize());
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 bool PdfiumRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 {
-    juce::ignoreUnused (destData);
-    jassertfalse; // P02
-    return false;
+    try
+    {
+        juce::MemoryBlock replacement;
+
+        {
+            auto& state = getPdfiumProcessState();
+            const juce::ScopedLock lock (state.apiLock);
+
+            if (impl->document == nullptr || impl->pdfData == nullptr || impl->pdfData->getSize() == 0)
+                return false;
+
+            replacement.replaceAll (impl->pdfData->getData(), impl->pdfData->getSize());
+        }
+
+        destData = std::move (replacement);
+        return true;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return false;
+    }
 }
 
 void PdfiumRenderer::close() noexcept
@@ -310,9 +377,105 @@ PdfPage PdfiumRenderer::getPage (int pageIndex) const noexcept
 
 juce::Image PdfiumRenderer::renderPage (int pageIndex, float scale) noexcept
 {
-    juce::ignoreUnused (pageIndex, scale);
-    jassertfalse; // P02
-    return {};
+    if (pageIndex < 0 || !std::isfinite (scale) || scale <= 0.0f)
+        return {};
+
+    try
+    {
+        auto& state = getPdfiumProcessState();
+        const juce::ScopedLock lock (state.apiLock);
+
+        if (impl->document == nullptr)
+            return {};
+
+        const int pageCount = FPDF_GetPageCount (impl->document);
+
+        if (pageCount <= 0 || pageIndex >= pageCount)
+            return {};
+
+        ScopedPdfiumPage page (FPDF_LoadPage (impl->document, pageIndex));
+
+        if (page.get() == nullptr)
+            return {};
+
+        const double widthPixels = std::ceil (
+            static_cast<double> (FPDF_GetPageWidthF (page.get())) * static_cast<double> (scale));
+        const double heightPixels = std::ceil (
+            static_cast<double> (FPDF_GetPageHeightF (page.get())) * static_cast<double> (scale));
+
+        if (!std::isfinite (widthPixels) || !std::isfinite (heightPixels)
+            || widthPixels <= 0.0 || heightPixels <= 0.0
+            || widthPixels > static_cast<double> (detail::maxRasterDimension)
+            || heightPixels > static_cast<double> (detail::maxRasterDimension))
+        {
+            return {};
+        }
+
+        const int width = static_cast<int> (widthPixels);
+        const int height = static_cast<int> (heightPixels);
+        const auto pixelCount = static_cast<std::uint64_t> (width)
+                              * static_cast<std::uint64_t> (height);
+
+        if (pixelCount > detail::maxRasterPixels)
+            return {};
+
+        juce::SoftwareImageType imageType;
+        juce::Image image (juce::Image::ARGB, width, height, true, imageType);
+
+        if (!image.isValid())
+            return {};
+
+        juce::Image::BitmapData bitmapData (image, juce::Image::BitmapData::writeOnly);
+
+        if (bitmapData.data == nullptr
+            || bitmapData.pixelFormat != juce::Image::ARGB
+            || bitmapData.pixelStride != static_cast<int> (sizeof (juce::PixelARGB))
+            || bitmapData.lineStride <= 0)
+        {
+            return {};
+        }
+
+        const auto requiredBytes = static_cast<std::uint64_t> (bitmapData.lineStride)
+                                 * static_cast<std::uint64_t> (height);
+
+        if (requiredBytes > static_cast<std::uint64_t> (bitmapData.size))
+            return {};
+
+        ScopedPdfiumBitmap bitmap (
+            FPDFBitmap_CreateEx (width,
+                                 height,
+                                 FPDFBitmap_BGRA,
+                                 bitmapData.data,
+                                 bitmapData.lineStride));
+
+        if (bitmap.get() == nullptr)
+            return {};
+
+        FPDFBitmap_FillRect (bitmap.get(), 0, 0, width, height, 0xffffffffu);
+
+        int renderFlags = FPDF_RENDER_LIMITEDIMAGECACHE;
+
+       #if JUCE_ANDROID
+        // juce::PixelARGB is RGBA in memory on Android; PDFium BGRA rendering
+        // needs RGB byte order there. Windows/Linux native PixelARGB is BGRA.
+        renderFlags |= FPDF_REVERSE_BYTE_ORDER;
+       #endif
+
+        FPDF_RenderPageBitmap (bitmap.get(),
+                               page.get(),
+                               0,
+                               0,
+                               width,
+                               height,
+                               0,
+                               renderFlags);
+
+        return image;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
 }
 
 juce::Array<PdfSearchResult> PdfiumRenderer::findText (const juce::String& query, int pageIndex) noexcept
