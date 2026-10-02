@@ -47,8 +47,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **P03** | PDFium | Extract/search con bounds esatti | P01 | **done (static)** |
 | **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | **done (static)** |
 | **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | **done (static)** |
-| **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | **in progress** |
-| **H01** | Module contract | Rendere esplicito e corretto il contratto headless/dependencies JUCE | D02 | pending |
+| **W02** | Widget | Zoom anchor, pan, wheel/pinch, HiDPI, search overlay | W01 | **done (static)** |
+| **H01** | Module contract | Rendere esplicito e corretto il contratto headless/dependencies JUCE | D02 | **in progress** |
 | **C01** | Current-only cutover | Rimuovere `pdf_component/`, include legacy e ogni alias/fallback | W02,H01 | pending |
 | **V01** | Verification esterna | Build/test target dichiarati + sanitizer dove applicabile | C01 | external pending |
 
@@ -502,6 +502,47 @@ nel widget.
 
 ---
 
+## Esito W02
+
+**W02 (2026-10-02)**: zoom 0.1x..10x con anchor stabile, pan/clamp, drag/wheel/pinch,
+HiDPI raster separato dalle dimensioni logiche e search overlay della pagina corrente.
+Render/search sono worker-only e coalesced: latest-request-wins, al massimo un job render e
+uno search per widget. La trasformazione highlight usa page space lower-left/Y-up, MediaBox
+non-zero e /Rotate 0/90/180/270. LookAndFeel espone un hook dedicato all'highlight.
+Nel widget non restano `jassertfalse` o TODO. Test GUI/HiDPI/gesture restano
+**external pending**.
+
+## Change Contract — H01 headless dependency envelope
+
+**Task model**: fare in modo che `AYRA_PDF_HEADLESS` escluda davvero ogni dipendenza JUCE GUI,
+mantenendo engine/renderer utilizzabili con `juce_graphics`.
+
+**Vincolo JUCE**: il module declaration non supporta dependencies condizionali. Dichiarare
+`juce_gui_basics` in `dependencies:` la renderebbe obbligatoria anche in headless.
+
+**Canonical contract**:
+- dependency obbligatoria di `ayra_pdf`: `juce_graphics`;
+- build headless: definire `AYRA_PDF_HEADLESS`, nessun widget/legacy e nessun include GUI;
+- build GUI: il progetto consumer deve rendere disponibile `juce_gui_basics`; il root header
+  verifica la presenza e fallisce chiaramente se manca;
+- `juce_gui_extra` non e' richiesto da ayra_pdf.
+
+**Invariants**:
+- engine/renderer non referenziano `juce::Component` o tipi GUI;
+- legacy macOS escluso quando headless;
+- nessun fallback che abilita/disabilita silenziosamente widget;
+- `juce::Image` resta ammesso tramite `juce_graphics`;
+- CoreGraphics/PDFKit/PDFium restano backend system/third-party del core.
+
+**Acceptance criteria H01**:
+- metadata `dependencies: juce_graphics`;
+- root include sempre `juce_graphics`, `juce_gui_basics` solo se !HEADLESS;
+- legacy header/cpp incluso solo se !HEADLESS;
+- code search headless path senza simboli `juce::Component`;
+- build headless e GUI: **external pending**.
+
+---
+
 ## Tabella riepilogativa
 
 | File / Classe | Stato | Piattaforma | Fase |
@@ -516,7 +557,7 @@ nel widget.
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
 | `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ✅ P01-P03 completi staticamente | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
-| `widgets/ayra_PdfViewComponent.cpp` | 🟠 W01 completo staticamente; W02 in progress | tutte | 5 |
+| `widgets/ayra_PdfViewComponent.cpp` | ✅ W01-W02 completi staticamente | tutte | 5 |
 | `widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h` | ✅ completo | tutte | 1 |
 | `widgets/look_and_feel/ayra_PdfDefaultLookAndFeel.h/.cpp` | ✅ completo | tutte | 1 |
 | `pdf_component/PDFComponent.h/.cpp` | ✅ funzionante (LEGACY) | macOS | - |

@@ -20,6 +20,13 @@ Per **Windows, Linux, Android** continuare con le sezioni seguenti (richiede PDF
 
 ---
 
+## Dipendenze JUCE
+
+- Core/headless: `juce_graphics`.
+- GUI: aggiungere anche `juce_gui_basics` al progetto consumer.
+- `juce_gui_extra` non e' richiesto da ayra_pdf.
+- Per build senza widget definire `AYRA_PDF_HEADLESS=1`.
+
 ## macOS / iOS
 
 Backend v2: **CoreGraphics + PDFKit** (macOS 11+ / iOS 14+). Sono framework Apple di sistema, senza dipendenze third-party. Il metadata JUCE del modulo dichiara `CoreGraphics PDFKit` per macOS e iOS.

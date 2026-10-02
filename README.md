@@ -394,13 +394,10 @@ Modificare `PDFIUM_VERSION` in `scripts/setup_pdfium.sh` / `setup_pdfium.ps1`, p
 
 ## Headless Mode
 
-`AYRA_PDF_HEADLESS` **oggi significa soltanto "escludi i widget dal codice del modulo"**.
-Non significa ancora "nessuna dipendenza JUCE GUI": `ayra_pdf.h` include `juce_gui_extra`
-e la metadata del modulo dichiara quella dipendenza.
-
-Il codice puo' quindi essere usato senza aprire finestre, ma il vecchio claim dependency-minimal
-headless non e' ancora realizzato. La risoluzione e' il microstep **H01** nel documento
-canonico `_docs/02_stato_attuale.md`.
+Il contratto H01 rende `AYRA_PDF_HEADLESS` una vera esclusione del layer GUI:
+il core dipende da `juce_graphics` (per `juce::Image`) ma non da `juce_gui_basics`
+o `juce_gui_extra`. In build GUI il progetto consumer deve includere/linkare
+`juce_gui_basics`; in headless non e' richiesto.
 
 ---
 
