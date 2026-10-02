@@ -914,6 +914,7 @@ public:
         expect (! document.renderPage (-1, 1.0f).isValid());
         expect (! document.renderPage (0, 0.0f).isValid());
         expect (! document.renderPage (0, std::numeric_limits<float>::infinity()).isValid());
+        expect (! document.renderPage (0, 1000000.0f).isValid());
 
         document.close();
         expect (! document.isOpen());
