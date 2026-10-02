@@ -13,16 +13,18 @@
  Ayra uses a GPL/commercial licence - see LICENCE.md for details.
 */
 
-// Implementazione CoreGraphics di MacPdfRenderer.
-//
+// Implementazione Apple di MacPdfRenderer.
+// CoreGraphics: lifecycle, metadata, raster.
+// PDFKit: estrazione testo e ricerca.
 // Roadmap canonica: _docs/02_stato_attuale.md.
-// M01 implementa lifecycle, caricamento e metadati pagina.
-// I successivi M02-M04 completano rendering, serializzazione e testo/ricerca.
+// M01-M03 sono implementati staticamente; M04 completa il content model testuale.
 // Il codice legacy e' solo riferimento storico e verra' rimosso al cutover current-only.
 
 #if JUCE_MAC || JUCE_IOS
 
 #include "../ayra_PdfSafetyLimits.h"
+
+#import <PDFKit/PDFKit.h>
 
 #include <cmath>
 #include <cstdint>
@@ -35,6 +37,63 @@ namespace ayra
 
 namespace
 {
+
+[[nodiscard]] bool fitsFloat (CGFloat value) noexcept
+{
+    const auto d = static_cast<double> (value);
+    constexpr auto maxFloat = static_cast<double> (std::numeric_limits<float>::max());
+    return std::isfinite (d) && d >= -maxFloat && d <= maxFloat;
+}
+
+template <typename NativeRectangle>
+[[nodiscard]] bool copyPdfBounds (const NativeRectangle& nativeBounds,
+                                  juce::Rectangle<float>& destination) noexcept
+{
+    if (!fitsFloat (nativeBounds.origin.x) || !fitsFloat (nativeBounds.origin.y)
+        || !fitsFloat (nativeBounds.size.width) || !fitsFloat (nativeBounds.size.height)
+        || nativeBounds.size.width <= 0 || nativeBounds.size.height <= 0)
+    {
+        return false;
+    }
+
+    destination = { static_cast<float> (nativeBounds.origin.x),
+                    static_cast<float> (nativeBounds.origin.y),
+                    static_cast<float> (nativeBounds.size.width),
+                    static_cast<float> (nativeBounds.size.height) };
+    return !destination.isEmpty();
+}
+
+[[nodiscard]] bool copyNSStringToJuce (NSString* source, juce::String& destination)
+{
+    if (source == nil)
+        return false;
+
+    NSUInteger utf8Bytes = 0;
+    const char* utf8 = nullptr;
+
+    @try
+    {
+        utf8Bytes = [source lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+
+        if (utf8Bytes > detail::maxTextUtf8BytesPerPage
+            || utf8Bytes > static_cast<NSUInteger> (std::numeric_limits<int>::max()))
+        {
+            return false;
+        }
+
+        utf8 = [source UTF8String];
+    }
+    @catch (NSException*)
+    {
+        return false;
+    }
+
+    if (utf8 == nullptr)
+        return false;
+
+    destination = juce::String::fromUTF8 (utf8, static_cast<int> (utf8Bytes));
+    return true;
+}
 
 class ProviderDataSnapshot final
 {
@@ -96,6 +155,78 @@ struct MacPdfRenderer::Impl
     CGPDFDocumentRef document { nullptr };        ///< Documento CoreGraphics corrente
     CGDataProviderRef provider { nullptr };       ///< Provider mantenuto vivo quanto il documento
     std::unique_ptr<juce::MemoryBlock> pdfData;   ///< Backing storage per load-from-memory
+
+    PDFDocument* textDocument { nil };             ///< Cache derivata PDFKit per text/search
+    CFDataRef textData { nullptr };                ///< Byte snapshot posseduti dalla cache PDFKit
+
+    [[nodiscard]] bool ensureTextDocument() noexcept
+    {
+        if (textDocument != nil)
+            return true;
+
+        if (provider == nullptr || document == nullptr)
+            return false;
+
+        CFDataRef newData = CGDataProviderCopyData (provider);
+
+        if (newData == nullptr)
+            return false;
+
+        const CFIndex length = CFDataGetLength (newData);
+
+        if (length <= 0
+            || static_cast<std::uint64_t> (length) > detail::maxDocumentBytes)
+        {
+            CFRelease (newData);
+            return false;
+        }
+
+        PDFDocument* newTextDocument = nil;
+
+        @try
+        {
+            newTextDocument = [[PDFDocument alloc] initWithData:(__bridge NSData*) newData];
+
+            if (newTextDocument != nil
+                && [newTextDocument pageCount] != CGPDFDocumentGetNumberOfPages (document))
+            {
+                [newTextDocument release];
+                newTextDocument = nil;
+            }
+        }
+        @catch (NSException*)
+        {
+            if (newTextDocument != nil)
+                [newTextDocument release];
+
+            newTextDocument = nil;
+        }
+
+        if (newTextDocument == nil)
+        {
+            CFRelease (newData);
+            return false;
+        }
+
+        textData = newData;
+        textDocument = newTextDocument;
+        return true;
+    }
+
+    void resetTextDocument() noexcept
+    {
+        if (textDocument != nil)
+        {
+            [textDocument release];
+            textDocument = nil;
+        }
+
+        if (textData != nullptr)
+        {
+            CFRelease (textData);
+            textData = nullptr;
+        }
+    }
 };
 
 // ======================================================================
@@ -235,6 +366,8 @@ bool MacPdfRenderer::saveToMemory (juce::MemoryBlock& destData) const noexcept
 
 void MacPdfRenderer::close() noexcept
 {
+    impl->resetTextDocument();
+
     if (impl->document != nullptr)
     {
         CGPDFDocumentRelease (impl->document);
@@ -286,19 +419,8 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
     const auto mediaBox = CGRectStandardize (CGPDFPageGetBoxRect (page, kCGPDFMediaBox));
 
-    const auto fitsFloat = [] (CGFloat value) noexcept
-    {
-        const auto d = static_cast<double> (value);
-        constexpr auto maxFloat = static_cast<double> (std::numeric_limits<float>::max());
-        return std::isfinite (d) && d >= -maxFloat && d <= maxFloat;
-    };
-
-    if (CGRectIsNull (mediaBox) || CGRectIsEmpty (mediaBox) || CGRectIsInfinite (mediaBox)
-        || !fitsFloat (mediaBox.origin.x) || !fitsFloat (mediaBox.origin.y)
-        || !fitsFloat (mediaBox.size.width) || !fitsFloat (mediaBox.size.height))
-    {
+    if (CGRectIsNull (mediaBox) || CGRectIsEmpty (mediaBox) || CGRectIsInfinite (mediaBox))
         return {};
-    }
 
     const int rawRotation = CGPDFPageGetRotationAngle (page);
     const int rotation = ((rawRotation % 360) + 360) % 360;
@@ -308,10 +430,10 @@ PdfPage MacPdfRenderer::getPage (int pageIndex) const noexcept
 
     PdfPage result;
     result.index = pageIndex;
-    result.bounds = { static_cast<float> (mediaBox.origin.x),
-                      static_cast<float> (mediaBox.origin.y),
-                      static_cast<float> (mediaBox.size.width),
-                      static_cast<float> (mediaBox.size.height) };
+
+    if (!copyPdfBounds (mediaBox, result.bounds))
+        return {};
+
     result.rotation = rotation;
     return result;
 }
@@ -440,14 +562,188 @@ juce::Image MacPdfRenderer::renderPage (int pageIndex, float scale) noexcept
 
 juce::Array<PdfSearchResult> MacPdfRenderer::findText (const juce::String& query, int pageIndex) noexcept
 {
-    jassertfalse; // TODO: Fase 2
-    return {};
+    if (impl->document == nullptr || query.isEmpty() || pageIndex < -1)
+        return {};
+
+    const int pageCount = getPageCount();
+
+    if (pageCount <= 0 || (pageIndex >= 0 && pageIndex >= pageCount))
+        return {};
+
+    try
+    {
+        const auto queryBytes = static_cast<std::uint64_t> (query.getNumBytesAsUTF8());
+
+        if (queryBytes == 0 || queryBytes > detail::maxSearchQueryUtf8Bytes)
+            return {};
+
+        if (!impl->ensureTextDocument())
+            return {};
+
+        juce::Array<PdfSearchResult> results;
+
+        @autoreleasepool
+        {
+            NSString* needle = nil;
+
+            @try
+            {
+                needle = [NSString stringWithUTF8String:query.toRawUTF8()];
+            }
+            @catch (NSException*)
+            {
+                return {};
+            }
+
+            if (needle == nil)
+                return {};
+
+            const int firstPage = pageIndex >= 0 ? pageIndex : 0;
+            const int lastPage = pageIndex >= 0 ? pageIndex : pageCount - 1;
+
+            for (int currentPage = firstPage; currentPage <= lastPage; ++currentPage)
+            {
+                PDFPage* page = nil;
+                NSString* pageText = nil;
+
+                @try
+                {
+                    page = [impl->textDocument pageAtIndex:static_cast<NSUInteger> (currentPage)];
+                    pageText = [page string];
+                }
+                @catch (NSException*)
+                {
+                    return {};
+                }
+
+                if (page == nil || pageText == nil || [pageText length] == 0)
+                    continue;
+
+                NSUInteger pageUtf8Bytes = 0;
+
+                @try
+                {
+                    pageUtf8Bytes = [pageText lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+                }
+                @catch (NSException*)
+                {
+                    return {};
+                }
+
+                if (pageUtf8Bytes > detail::maxTextUtf8BytesPerPage)
+                    return {};
+
+                const NSUInteger textLength = [pageText length];
+                NSRange remaining = NSMakeRange (0, textLength);
+
+                while (remaining.length > 0
+                       && results.size() < detail::maxSearchResults)
+                {
+                    NSRange match = NSMakeRange (NSNotFound, 0);
+
+                    @try
+                    {
+                        match = [pageText rangeOfString:needle
+                                               options:NSCaseInsensitiveSearch
+                                                 range:remaining];
+                    }
+                    @catch (NSException*)
+                    {
+                        return {};
+                    }
+
+                    if (match.location == NSNotFound || match.length == 0)
+                        break;
+
+                    PDFSelection* selection = nil;
+                    juce::Rectangle<float> bounds;
+                    NSString* matchedText = nil;
+
+                    @try
+                    {
+                        selection = [page selectionForRange:match];
+
+                        if (selection != nil)
+                        {
+                            const auto nativeBounds = [selection boundsForPage:page];
+                            copyPdfBounds (nativeBounds, bounds);
+                            matchedText = [pageText substringWithRange:match];
+                        }
+                    }
+                    @catch (NSException*)
+                    {
+                        return {};
+                    }
+
+                    if (selection != nil && !bounds.isEmpty() && matchedText != nil)
+                    {
+                        PdfSearchResult result;
+                        result.pageIndex = currentPage;
+                        result.bounds = bounds;
+
+                        if (!copyNSStringToJuce (matchedText, result.text) || result.text.isEmpty())
+                            return {};
+
+                        results.add (std::move (result));
+                    }
+
+                    const NSUInteger next = NSMaxRange (match);
+
+                    if (next <= match.location || next >= textLength)
+                        break;
+
+                    remaining = NSMakeRange (next, textLength - next);
+                }
+
+                if (results.size() >= detail::maxSearchResults)
+                    break;
+            }
+        }
+
+        return results;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
 }
 
 juce::String MacPdfRenderer::extractText (int pageIndex) noexcept
 {
-    jassertfalse; // TODO: Fase 2
-    return {};
+    if (impl->document == nullptr || pageIndex < 0 || pageIndex >= getPageCount())
+        return {};
+
+    if (!impl->ensureTextDocument())
+        return {};
+
+    try
+    {
+        @autoreleasepool
+        {
+            NSString* pageText = nil;
+
+            @try
+            {
+                PDFPage* page = [impl->textDocument pageAtIndex:static_cast<NSUInteger> (pageIndex)];
+                pageText = [page string];
+            }
+            @catch (NSException*)
+            {
+                return {};
+            }
+
+            juce::String result;
+
+            if (!copyNSStringToJuce (pageText, result))
+                return {};
+
+            return result;
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        return {};
+    }
 }
 
 } // namespace ayra

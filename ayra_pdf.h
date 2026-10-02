@@ -21,11 +21,13 @@
   version:              2.0
   name:                 AYRA PDF
   description:          Rendering, ricerca, estrazione testo e visualizzazione PDF cross-platform.
-                        macOS/iOS usa CoreGraphics nativo. Windows/Linux/Android usa PDFium (Apache 2.0).
+                        macOS/iOS usa CoreGraphics + PDFKit. Windows/Linux/Android usa PDFium (Apache 2.0).
   website:
   license:              Copyright. All Rights Reserved.
 
   dependencies:         juce_gui_extra
+  OSXFrameworks:        CoreGraphics PDFKit
+  iOSFrameworks:        CoreGraphics PDFKit
 
  END_JUCE_MODULE_DECLARATION
 *******************************************************************************/

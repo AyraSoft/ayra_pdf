@@ -25,5 +25,8 @@ namespace ayra::detail
 inline constexpr std::uint64_t maxDocumentBytes = 512ull * 1024ull * 1024ull;
 inline constexpr int maxRasterDimension = 16384;
 inline constexpr std::uint64_t maxRasterPixels = 64ull * 1024ull * 1024ull;
+inline constexpr std::uint64_t maxTextUtf8BytesPerPage = 64ull * 1024ull * 1024ull;
+inline constexpr std::uint64_t maxSearchQueryUtf8Bytes = 64ull * 1024ull;
+inline constexpr int maxSearchResults = 100000;
 
 } // namespace ayra::detail
