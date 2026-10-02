@@ -149,7 +149,8 @@ public:
 
     /** Imposta la query evidenziata sulla pagina corrente. Stringa vuota = clear.
      *  Query oltre il budget UTF-8 canonico vengono rifiutate fail-closed senza
-     *  accodare lavoro al worker.
+     *  accodare lavoro al worker. Se una nuova query invalida risultati visibili,
+     *  i listener ricevono subito count=0 prima della publication asincrona nuova.
      */
     void setSearchQuery (const juce::String& query);
 

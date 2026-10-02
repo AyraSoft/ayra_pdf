@@ -666,6 +666,8 @@ void PdfViewComponent::setSearchQuery (const juce::String& query)
     if (query == searchQuery)
         return;
 
+    const bool hadVisibleResults = !searchResults.isEmpty();
+
     searchQuery = query;
     invalidateSearchResults();
 
@@ -676,6 +678,11 @@ void PdfViewComponent::setSearchQuery (const juce::String& query)
     }
 
     requestSearchResults();
+
+    // Publication is intentionally after the new request has been staged. A
+    // listener may delete this widget; no member access is performed afterwards.
+    if (hadVisibleResults)
+        notifySearchResultsChanged();
 }
 
 void PdfViewComponent::clearSearch()

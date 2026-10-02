@@ -141,3 +141,10 @@ budget.
 Direct widget file/memory loads stage the replacement `PdfDocument` inside a `bad_alloc` boundary.
 Allocation failure preserves the active document and all current view state, matching the same
 transactional rule used for malformed/unsupported PDF input.
+
+
+## Search invalidation publication
+
+Changing a non-empty query now makes invalidation observable at the widget boundary: if highlights
+were visible, the new worker request is staged first and listeners are then synchronously notified
+with result count 0. Consumers no longer need to maintain a parallel “stale count” reset policy.
