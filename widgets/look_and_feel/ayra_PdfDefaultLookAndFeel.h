@@ -24,76 +24,32 @@ namespace ayra
 class PdfDefaultLookAndFeel final : public PdfLookAndFeelMethods
 {
 public:
-    static PdfDefaultLookAndFeel& getDefaultInstance()
-    {
-        static PdfDefaultLookAndFeel instance;
-        return instance;
-    }
+    static PdfDefaultLookAndFeel& getDefaultInstance();
 
-    void drawPdfViewBackground (juce::Graphics& g,
+    void drawPdfViewBackground (juce::Graphics&,
                                 int width,
                                 int height,
-                                PdfViewComponent& comp) override
-    {
-        g.setColour (resolveColour (comp,
-                                    PdfViewComponent::backgroundColourId,
-                                    juce::Colour (0xff2a2a2a)));
-        g.fillRect (0, 0, width, height);
-    }
+                                PdfViewComponent&) override;
 
-    void drawPdfViewNoDocument (juce::Graphics& g,
+    void drawPdfViewNoDocument (juce::Graphics&,
                                 int width,
                                 int height,
-                                PdfViewComponent& comp) override
-    {
-        g.setColour (resolveColour (comp,
-                                    PdfViewComponent::noDocumentTextColourId,
-                                    juce::Colours::grey));
-        g.setFont (14.0f);
-        g.drawText ("Nessun documento caricato",
-                    0,
-                    0,
-                    width,
-                    height,
-                    juce::Justification::centred);
-    }
+                                PdfViewComponent&) override;
 
-    void drawPdfViewPageBackground (juce::Graphics& g,
+    void drawPdfViewPageBackground (juce::Graphics&,
                                     juce::Rectangle<float> pageBounds,
-                                    PdfViewComponent& comp) override
-    {
-        g.setColour (resolveColour (comp,
-                                    PdfViewComponent::pageColourId,
-                                    juce::Colours::white));
-        g.fillRect (pageBounds);
-    }
+                                    PdfViewComponent&) override;
 
-    void drawPdfViewPageShadow (juce::Graphics& g,
+    void drawPdfViewPageShadow (juce::Graphics&,
                                 juce::Rectangle<float> pageBounds,
-                                PdfViewComponent& comp) override
-    {
-        const auto shadow = pageBounds.expanded (4.0f).translated (3.0f, 3.0f);
-        g.setColour (resolveColour (comp,
-                                    PdfViewComponent::shadowColourId,
-                                    juce::Colours::black.withAlpha (0.4f)));
-        g.fillRect (shadow);
-    }
+                                PdfViewComponent&) override;
 
 private:
     PdfDefaultLookAndFeel() = default;
 
-    static juce::Colour resolveColour (PdfViewComponent& comp,
+    static juce::Colour resolveColour (PdfViewComponent&,
                                        int colourId,
-                                       juce::Colour fallback)
-    {
-        if (comp.isColourSpecified (colourId)
-            || comp.getLookAndFeel().isColourSpecified (colourId))
-        {
-            return comp.findColour (colourId);
-        }
-
-        return fallback;
-    }
+                                       juce::Colour fallback);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PdfDefaultLookAndFeel)
 };

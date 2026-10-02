@@ -17,6 +17,77 @@ namespace ayra
 {
 
 //==============================================================================
+// Default LookAndFeel
+
+PdfDefaultLookAndFeel& PdfDefaultLookAndFeel::getDefaultInstance()
+{
+    static PdfDefaultLookAndFeel instance;
+    return instance;
+}
+
+void PdfDefaultLookAndFeel::drawPdfViewBackground (juce::Graphics& g,
+                                                    int width,
+                                                    int height,
+                                                    PdfViewComponent& comp)
+{
+    g.setColour (resolveColour (comp,
+                                PdfViewComponent::backgroundColourId,
+                                juce::Colour (0xff2a2a2a)));
+    g.fillRect (0, 0, width, height);
+}
+
+void PdfDefaultLookAndFeel::drawPdfViewNoDocument (juce::Graphics& g,
+                                                    int width,
+                                                    int height,
+                                                    PdfViewComponent& comp)
+{
+    g.setColour (resolveColour (comp,
+                                PdfViewComponent::noDocumentTextColourId,
+                                juce::Colours::grey));
+    g.setFont (14.0f);
+    g.drawText ("Nessun documento caricato",
+                0,
+                0,
+                width,
+                height,
+                juce::Justification::centred);
+}
+
+void PdfDefaultLookAndFeel::drawPdfViewPageBackground (juce::Graphics& g,
+                                                        juce::Rectangle<float> pageBounds,
+                                                        PdfViewComponent& comp)
+{
+    g.setColour (resolveColour (comp,
+                                PdfViewComponent::pageColourId,
+                                juce::Colours::white));
+    g.fillRect (pageBounds);
+}
+
+void PdfDefaultLookAndFeel::drawPdfViewPageShadow (juce::Graphics& g,
+                                                    juce::Rectangle<float> pageBounds,
+                                                    PdfViewComponent& comp)
+{
+    const auto shadow = pageBounds.expanded (4.0f).translated (3.0f, 3.0f);
+    g.setColour (resolveColour (comp,
+                                PdfViewComponent::shadowColourId,
+                                juce::Colours::black.withAlpha (0.4f)));
+    g.fillRect (shadow);
+}
+
+juce::Colour PdfDefaultLookAndFeel::resolveColour (PdfViewComponent& comp,
+                                                    int colourId,
+                                                    juce::Colour fallback)
+{
+    if (comp.isColourSpecified (colourId)
+        || comp.getLookAndFeel().isColourSpecified (colourId))
+    {
+        return comp.findColour (colourId);
+    }
+
+    return fallback;
+}
+
+//==============================================================================
 // LookAndFeel forwarding
 
 void PdfViewComponent::LookAndFeelMethods::drawPdfViewBackground (juce::Graphics& g,
@@ -163,7 +234,7 @@ void PdfViewComponent::exportCurrentDocument (const juce::String& withName,
 
     const auto legalName = juce::File::createLegalFileName (withName.trim());
 
-    if (legalName.isEmpty())
+    if (legalName.isEmpty() || legalName == "." || legalName == "..")
         return;
 
     const juce::File folder (folderPath);
@@ -172,7 +243,7 @@ void PdfViewComponent::exportCurrentDocument (const juce::String& withName,
         return;
 
     const auto destination = folder.getChildFile (legalName).withFileExtension (".pdf");
-    currentDocument->save (destination);
+    (void) currentDocument->save (destination);
 }
 
 void PdfViewComponent::loadDocumentFromMemoryBlock (const void* data, int sizeInBytes)
@@ -195,7 +266,7 @@ void PdfViewComponent::loadDocumentFromMemoryBlock (const void* data, int sizeIn
 void PdfViewComponent::getMemoryBlockFromDocument (juce::MemoryBlock& destData)
 {
     if (thereIsADocumentLoaded())
-        currentDocument->saveToMemoryBlock (destData);
+        (void) currentDocument->saveToMemoryBlock (destData);
 }
 
 void PdfViewComponent::setDocument (PdfDocument& doc)
