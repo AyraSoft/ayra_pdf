@@ -22,7 +22,7 @@ L'header vendorizzato `fpdfview.h` e l'upstream PDFium dichiarano che **nessuna 
 e' thread-safe**. Non basta quindi evitare accesso concorrente allo stesso documento: anche
 istanze diverse devono essere serializzate.
 
-P01 usa un unico `std::mutex` process-wide come protocollo canonico per **tutte** le chiamate
+P01 usa un unico `juce::CriticalSection` process-wide come protocollo canonico per **tutte** le chiamate
 FPDF. Lo stesso stato mantiene un instance count:
 
 - 0 -> 1: `FPDF_InitLibraryWithConfig`;
@@ -434,18 +434,18 @@ void PdfiumRenderer::close() noexcept
 ## Checklist implementazione Fase 3
 
 - [ ] Verificare che `setup_pdfium.sh` abbia scaricato i binari per la piattaforma target
-- [ ] Rimuovere il fallback `AYRA_PDFIUM_AVAILABLE/__has_include`: current-only richiede backend reale
-- [ ] `loadFromFile` — bounded JUCE read -> percorso memory canonico
-- [ ] `loadFromMemory` — `FPDF_LoadMemDocument64`, commit transazionale
+- [x] Rimosso fallback `AYRA_PDFIUM_AVAILABLE/__has_include`: backend/link obbligatori
+- [x] `loadFromFile` — bounded JUCE read -> percorso memory canonico
+- [x] `loadFromMemory` — `FPDF_LoadMemDocument64`, commit transazionale
 - [ ] `saveToFile` — `FPDF_SaveAsCopy` con `FileWriter` struct
 - [ ] `saveToMemory` — `FPDF_SaveAsCopy` con `MemWriter` struct
-- [ ] `close` — `FPDF_CloseDocument` + reset pdfData
-- [ ] `getPageCount` — `FPDF_GetPageCount`
-- [ ] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
+- [x] `close` — `FPDF_CloseDocument` prima del reset backing data
+- [x] `getPageCount` — `FPDF_GetPageCount` serializzato
+- [x] `getPage` — `FPDFPage_GetMediaBox` + `FPDFPage_GetRotation`
 - [ ] `renderPage` — `FPDFBitmap_CreateEx` + `FPDF_RenderPageBitmap` + swap B/R se necessario
 - [ ] `extractText` — `FPDFText_LoadPage` + `FPDFText_GetText` + UTF-16LE -> juce::String
 - [ ] `findText` — `FPDFText_FindStart/Next/Close` + `FPDFText_GetCharBox`
 - [ ] Rimuovere tutti i `jassertfalse` sostituiti da implementazioni reali
-- [ ] Lifecycle + mutex process-wide su ogni API PDFium; init 0->1 / destroy 1->0
+- [x] Lifecycle + lock process-wide su ogni API PDFium; init 0->1 / destroy 1->0
 - [ ] Test manuale Windows: aprire PDF, renderizzare pagina, verificare colori corretti
 - [ ] Test round-trip: `loadFromFile` -> `saveToMemory` -> `loadFromMemory` -> `renderPage` deve produrre immagine identica

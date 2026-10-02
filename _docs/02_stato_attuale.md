@@ -42,8 +42,8 @@ dell'avvio dell'implementazione del 2026-10-02.
 | **M03** | Mac renderer | Save file + save memory byte-preserving | M01 | **done (static)** |
 | **M04** | Mac renderer | Estrazione testo + ricerca PDFKit con bounds esatti | M01 | **done (static)** |
 | **D01** | Engine | `PdfDocument` factory/delega attiva su Apple | M01-M04 | **done (static)** |
-| **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | **in progress** |
-| **P02** | PDFium | Render + save file/memory | P01 | pending |
+| **P01** | PDFium | Init/lifetime, load file/memory, close, metadata | S00 | **done (static)** |
+| **P02** | PDFium | Render + save file/memory | P01 | **in progress** |
 | **P03** | PDFium | Extract/search con bounds esatti | P01 | pending |
 | **D02** | Engine | `PdfDocument` completo su tutti i target dichiarati | D01,P01-P03 | pending |
 | **W01** | Widget | Load/navigation/cache/render + notifiche | D02 | pending |
@@ -260,9 +260,9 @@ Di conseguenza la sincronizzazione appartiene al backend, non ai consumer.
 
 **Invariants**:
 - init PDFium sul passaggio instance-count 0 -> 1, destroy su 1 -> 0, entrambi sotto
-  lo stesso mutex che serializza tutte le API FPDF;
+  la stessa lock process-wide che serializza tutte le API FPDF;
 - nessun `once_flag` combinato con destroy/re-init;
-- ogni futura chiamata PDFium deve acquisire lo stesso mutex process-wide;
+- ogni futura chiamata PDFium deve acquisire la stessa lock process-wide process-wide;
 - `loadFromFile` legge bounded con JUCE e converge su `FPDF_LoadMemDocument64`;
 - backing bytes owned restano validi fino a `FPDF_CloseDocument`;
 - load fallito lascia intatto il documento precedente;
@@ -280,6 +280,16 @@ Di conseguenza la sincronizzazione appartiene al backend, non ai consumer.
 - static diff audit completato;
 - build/test Win/Linux/Android e stress multi-thread: **external pending**.
 
+
+**Esito P01 (2026-10-02)**: implementato lifecycle process-wide con
+`juce::CriticalSection` e instance-count protetto; init 0->1 e destroy 1->0.
+`loadFromFile` esegue lettura bounded via JUCE e converge su
+`FPDF_LoadMemDocument64`; load file/memory sono transazionali e mantengono owned i
+backing bytes. `close/isLoaded/getPageCount/getPage` sono reali; metadata usa MediaBox
+72 dpi lower-left/Y-up e rotation PDFium. Tutte le chiamate FPDF attualmente attive sono
+serializzate dalla stessa lock. Nessun fallback headers-missing resta nel backend.
+Build/test Win/Linux/Android e stress concorrente: **external pending**.
+
 ---
 
 ## Tabella riepilogativa
@@ -294,7 +304,7 @@ Di conseguenza la sincronizzazione appartiene al backend, non ai consumer.
 | `renderer/mac/ayra_MacPdfRenderer.h` | ✅ dichiarazione completa | macOS/iOS | 1 |
 | `renderer/mac/ayra_MacPdfRenderer.mm` | ✅ M01-M04 completi staticamente | macOS/iOS | 2 |
 | `renderer/pdfium/ayra_PdfiumRenderer.h` | ✅ dichiarazione completa | Win/Linux/Android | 1 |
-| `renderer/pdfium/ayra_PdfiumRenderer.cpp` | ❌ stub (jassertfalse), solo close() parziale | Win/Linux/Android | 3 |
+| `renderer/pdfium/ayra_PdfiumRenderer.cpp` | 🟠 P01 completo; P02-P03 pending | Win/Linux/Android | 3 |
 | `widgets/ayra_PdfViewComponent.h` | ✅ interfaccia completa | tutte | 1 |
 | `widgets/ayra_PdfViewComponent.cpp` | ⚠️ parziale (setDocument funziona, resto stub) | tutte | 5 |
 | `widgets/look_and_feel/ayra_PdfLookAndFeelMethods.h` | ✅ completo | tutte | 1 |
