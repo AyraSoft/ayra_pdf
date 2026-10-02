@@ -7,6 +7,7 @@ third_party/pdfium/win/**/*.pdb
 third_party/pdfium/linux/**/*.so
 third_party/pdfium/linux/**/*.so.*
 third_party/pdfium/android/**/*.so
+third_party/pdfium/**/.pdfium-installed
 third_party/.pdfium_download_tmp/
 
 .DS_Store

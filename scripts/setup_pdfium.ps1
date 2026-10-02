@@ -61,13 +61,18 @@ $ExtractDir = Join-Path $TempDir "ext_$AssetKey"
 $OutDir = Join-Path (Join-Path $PdfiumDir 'win') $Platform
 $OutDll = Join-Path $OutDir 'pdfium.dll'
 $OutLib = Join-Path $OutDir 'pdfium.dll.lib'
+$StampPath = Join-Path $OutDir '.pdfium-installed'
 $IncludeDest = Join-Path $PdfiumDir 'include'
+$ExpectedHash = ([string]$Asset.sha256).ToLowerInvariant()
+$ExpectedStamp = "$($Manifest.version)|$AssetKey|$ExpectedHash"
 
 Write-Log "PDFium $($Manifest.version) / $AssetKey"
 
-if ((Test-Path $OutDll) -and (Test-Path $OutLib) -and (-not $Force))
+$StampMatches = (Test-Path $StampPath) -and ((Get-Content -Raw $StampPath).Trim() -eq $ExpectedStamp)
+
+if ((Test-Path $OutDll) -and (Test-Path $OutLib) -and $StampMatches -and (-not $Force))
 {
-    Write-Ok "Gia' installato: $OutDir"
+    Write-Ok "Gia' installato e coerente col manifest: $OutDir"
     exit 0
 }
 
@@ -88,7 +93,6 @@ catch
 }
 
 $ActualHash = (Get-FileHash -Path $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$ExpectedHash = ([string]$Asset.sha256).ToLowerInvariant()
 if ($ActualHash -ne $ExpectedHash)
 {
     Remove-Item $ArchivePath -Force -ErrorAction SilentlyContinue
@@ -113,6 +117,7 @@ if (-not (Test-Path (Join-Path $SourceInclude 'fpdfview.h'))) { Write-Err "Heade
 
 Copy-Item $SourceDll $OutDll -Force
 Copy-Item $SourceLib $OutLib -Force
+Set-Content -Path $StampPath -Value $ExpectedStamp -NoNewline
 New-Item -ItemType Directory -Force -Path $IncludeDest | Out-Null
 Copy-Item -Path (Join-Path $SourceInclude '*') -Destination $IncludeDest -Recurse -Force
 Remove-Item $ArchivePath -Force

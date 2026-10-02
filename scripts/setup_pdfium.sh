@@ -118,7 +118,7 @@ android_abi()
 install_one()
 {
     local platform="$1" arch="$2" key url expected_hash runtime_path
-    local archive_name archive_path extract_dir out_dir out_lib actual_hash
+    local archive_name archive_path extract_dir out_dir out_lib stamp_path expected_stamp actual_hash
     key="${platform}-${arch}"
     url="$(manifest_value "$key" url)" || { error "Asset non presente: $key"; return 1; }
     expected_hash="$(manifest_value "$key" sha256)"
@@ -130,8 +130,15 @@ install_one()
     if [[ "$platform" == linux ]]; then out_dir="$PDFIUM_DIR/linux/$arch";
     else out_dir="$PDFIUM_DIR/android/$(android_abi "$arch")"; fi
     out_lib="$out_dir/libpdfium.so"
+    stamp_path="$out_dir/.pdfium-installed"
+    expected_stamp="$VERSION|$key|$expected_hash"
 
-    if [[ -f "$out_lib" && "$FORCE" -eq 0 ]]; then ok "Gia installato: $out_lib"; return 0; fi
+    if [[ -f "$out_lib" && -f "$stamp_path" && "$FORCE" -eq 0 ]]; then
+        if [[ "$(cat "$stamp_path")" == "$expected_stamp" ]]; then
+            ok "Gia installato e coerente col manifest: $out_lib"
+            return 0
+        fi
+    fi
     mkdir -p "$TEMP_DIR" "$out_dir"
     log "Download $key: $archive_name"
     curl -fL --progress-bar "$url" -o "$archive_path"
@@ -148,6 +155,7 @@ install_one()
     tar -xzf "$archive_path" -C "$extract_dir"
     [[ -f "$extract_dir/$runtime_path" ]] || { error "libpdfium.so non trovata: $extract_dir/$runtime_path"; return 1; }
     cp "$extract_dir/$runtime_path" "$out_lib"
+    printf '%s' "$expected_stamp" > "$stamp_path"
     install_headers "$extract_dir"
     rm -f "$archive_path"
     ok "Runtime: $out_lib"
