@@ -161,3 +161,8 @@ Document replacement and explicit close publish search-count invalidation from t
 visible highlights existed. Ordering is document loaded/closed first, then search-count=0, with a
 `BailOutChecker` between callbacks. Consumers no longer own match-count reset policy for query,
 page, document replacement, or document close.
+
+
+The contract test waits for worker jobs to finish naturally (it does not remove queued work), drains
+`AsyncUpdater` publications on the Message Thread, and verifies exactly-one count invalidation for
+both document replacement and explicit close.

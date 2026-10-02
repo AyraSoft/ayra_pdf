@@ -287,6 +287,53 @@ juce::Colour sampleDisplayRectCentre (const juce::Image& image,
     return image.getPixelAt (x, y);
 }
 
+#ifndef AYRA_PDF_HEADLESS
+bool waitForPdfWorkerIdle (int timeoutMilliseconds)
+{
+    const auto deadline = juce::Time::getMillisecondCounter()
+                        + static_cast<juce::uint32> (timeoutMilliseconds);
+
+    for (;;)
+    {
+        if (getPdfRenderPool().getNumJobs() == 0)
+            return true;
+
+        auto* job = getPdfRenderPool().getJob (0);
+
+        if (job == nullptr)
+            continue;
+
+        const auto now = juce::Time::getMillisecondCounter();
+
+        if (now >= deadline)
+            return false;
+
+        const int remaining = static_cast<int> (deadline - now);
+
+        if (!getPdfRenderPool().waitForJobToFinish (job, remaining))
+            return false;
+    }
+}
+
+bool drainPdfAsyncPublications (PdfViewComponent& view,
+                                int minimumSearchResults,
+                                int maxAttempts = 16)
+{
+    if (!waitForPdfWorkerIdle (5000))
+        return false;
+
+    for (int attempt = 0; attempt < maxAttempts; ++attempt)
+    {
+        if (view.getSearchResultCount() >= minimumSearchResults)
+            return true;
+
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+    }
+
+    return view.getSearchResultCount() >= minimumSearchResults;
+}
+#endif
+
 } // namespace
 
 class PdfCoreTests final : public juce::UnitTest
@@ -472,14 +519,29 @@ public:
             expectEquals (callbackLoaded, 1);
 
             view.setSearchQuery ("AYRA");
-            expect (getPdfRenderPool().removeAllJobs (false, 5000));
+            expect (drainPdfAsyncPublications (view, 1));
+            expect (view.getSearchResultCount() > 0);
 
-            // Drain AsyncUpdater publications deterministically on the Message Thread.
-            for (int attempt = 0; attempt < 8 && view.getSearchResultCount() == 0; ++attempt)
-                juce::MessageManager::getInstance()->runDispatchLoopUntil (10);
+            auto replacementDocument = std::make_shared<PdfDocument>();
+            expect (replacementDocument->open (
+                fixture.getData(),
+                fixture.getSize()));
+
+            const int searchNotificationsBeforeReplacement = listener.searchChanged;
+            view.setDocument (replacementDocument);
+
+            expect (view.thereIsADocumentLoaded());
+            expectEquals (listener.loaded, 2);
+            expectEquals (callbackLoaded, 2);
+            expectEquals (view.getSearchResultCount(), 0);
+            expectEquals (listener.searchChanged,
+                          searchNotificationsBeforeReplacement + 1);
+
+            view.setSearchQuery ("AYRA");
+            expect (drainPdfAsyncPublications (view, 1));
+            expect (view.getSearchResultCount() > 0);
 
             const int searchNotificationsBeforeClose = listener.searchChanged;
-            const bool hadSearchResultsBeforeClose = view.getSearchResultCount() > 0;
 
             view.setDocument (nullptr);
             expect (! view.thereIsADocumentLoaded());
@@ -487,10 +549,9 @@ public:
             expectEquals (view.getCurrentPageOnScreen(), -1);
             expectEquals (listener.closed, 1);
             expectEquals (callbackClosed, 1);
-
-            if (hadSearchResultsBeforeClose)
-                expectEquals (listener.searchChanged,
-                              searchNotificationsBeforeClose + 1);
+            expectEquals (view.getSearchResultCount(), 0);
+            expectEquals (listener.searchChanged,
+                          searchNotificationsBeforeClose + 1);
 
             view.setDocument (nullptr);
             expectEquals (listener.closed, 1);
