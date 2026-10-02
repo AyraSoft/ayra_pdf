@@ -30,7 +30,7 @@ Render e search usano un pool condiviso del modulo. Per ciascun widget:
 - generation atomica invalida risultati obsoleti;
 - ogni job cattura uno `shared_ptr<PdfDocument>`.
 
-Il raw owner nel `RenderState` viene letto/scritto soltanto sul Message Thread.
+Il raw owner nel `RenderState` viene letto/scritto soltanto sul Message Thread. `AsyncUpdater` cancella callback pending al teardown; il worker non accoda lambda non cancellabili nel MessageManager.
 
 ## Viewport
 

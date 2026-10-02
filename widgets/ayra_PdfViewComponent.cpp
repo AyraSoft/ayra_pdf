@@ -36,7 +36,7 @@ constexpr float minVisibleFraction = 0.1f;
 
 } // namespace
 
-struct PdfViewComponent::RenderState
+struct PdfViewComponent::RenderState final : private juce::AsyncUpdater
 {
     std::atomic<std::uint64_t> renderGeneration { 0 };
     std::atomic<std::uint64_t> searchGeneration { 0 };
@@ -59,8 +59,139 @@ struct PdfViewComponent::RenderState
     std::uint64_t searchRequestGeneration { 0 };
     int searchPageIndex { -1 };
     juce::String searchQuery;
-};
 
+    void detachOwner() noexcept
+    {
+        owner = nullptr;
+        renderGeneration.fetch_add (1, std::memory_order_release);
+        searchGeneration.fetch_add (1, std::memory_order_release);
+        cancelPendingUpdate();
+
+        const juce::ScopedLock requestGuard (requestLock);
+        renderRequestPending = false;
+        searchRequestPending = false;
+        renderDocument.reset();
+        searchDocument.reset();
+        searchQuery.clear();
+
+        const juce::ScopedLock completionGuard (completionLock);
+        renderCompletion = {};
+        searchCompletion = {};
+    }
+
+    void postRender (std::uint64_t generation, PdfPage page, juce::Image image)
+    {
+        if (renderGeneration.load (std::memory_order_acquire) != generation)
+            return;
+
+        {
+            const juce::ScopedLock lock (completionLock);
+
+            if (renderGeneration.load (std::memory_order_acquire) != generation)
+                return;
+
+            renderCompletion.pending = true;
+            renderCompletion.generation = generation;
+            renderCompletion.page = page;
+            renderCompletion.image = std::move (image);
+        }
+
+        triggerAsyncUpdate();
+    }
+
+    void postSearch (std::uint64_t generation,
+                     int pageIndex,
+                     juce::Array<PdfSearchResult> results)
+    {
+        if (searchGeneration.load (std::memory_order_acquire) != generation)
+            return;
+
+        {
+            const juce::ScopedLock lock (completionLock);
+
+            if (searchGeneration.load (std::memory_order_acquire) != generation)
+                return;
+
+            searchCompletion.pending = true;
+            searchCompletion.generation = generation;
+            searchCompletion.pageIndex = pageIndex;
+            searchCompletion.results = std::move (results);
+        }
+
+        triggerAsyncUpdate();
+    }
+
+private:
+    struct RenderCompletion
+    {
+        bool pending { false };
+        std::uint64_t generation { 0 };
+        PdfPage page;
+        juce::Image image;
+    };
+
+    struct SearchCompletion
+    {
+        bool pending { false };
+        std::uint64_t generation { 0 };
+        int pageIndex { -1 };
+        juce::Array<PdfSearchResult> results;
+    };
+
+    juce::CriticalSection completionLock;
+    RenderCompletion renderCompletion;
+    SearchCompletion searchCompletion;
+
+    void handleAsyncUpdate() override
+    {
+        RenderCompletion render;
+        SearchCompletion search;
+
+        {
+            const juce::ScopedLock lock (completionLock);
+
+            if (renderCompletion.pending)
+            {
+                render = std::move (renderCompletion);
+                renderCompletion = {};
+            }
+
+            if (searchCompletion.pending)
+            {
+                search = std::move (searchCompletion);
+                searchCompletion = {};
+            }
+        }
+
+        if (owner != nullptr
+            && render.pending
+            && renderGeneration.load (std::memory_order_acquire) == render.generation)
+        {
+            owner->publishPageRender (render.generation,
+                                      render.page,
+                                      std::move (render.image));
+        }
+
+        if (owner != nullptr
+            && search.pending
+            && searchGeneration.load (std::memory_order_acquire) == search.generation)
+        {
+            owner->publishSearchResults (search.generation,
+                                         search.pageIndex,
+                                         std::move (search.results));
+        }
+
+        bool hasMore = false;
+
+        {
+            const juce::ScopedLock lock (completionLock);
+            hasMore = renderCompletion.pending || searchCompletion.pending;
+        }
+
+        if (hasMore)
+            triggerAsyncUpdate();
+    }
+};
 //==============================================================================
 // Default LookAndFeel
 
@@ -193,13 +324,10 @@ PdfViewComponent::PdfViewComponent()
 PdfViewComponent::~PdfViewComponent()
 {
     if (renderState != nullptr)
-    {
-        renderState->owner = nullptr;
-        renderState->renderGeneration.fetch_add (1, std::memory_order_release);
-        renderState->searchGeneration.fetch_add (1, std::memory_order_release);
-    }
+        renderState->detachOwner();
 
     currentDocument.reset();
+    renderState.reset();
 }
 
 void PdfViewComponent::loadDocument (const juce::String& filePath)
@@ -636,21 +764,7 @@ void PdfViewComponent::requestPageRender()
                 if (state->renderGeneration.load (std::memory_order_acquire) != generation)
                     continue;
 
-                try
-                {
-                    (void) juce::MessageManager::callAsync (
-                        [state, generation, page, image = std::move (image)] () mutable
-                        {
-                            if (state->renderGeneration.load (std::memory_order_acquire) != generation)
-                                return;
-
-                            if (auto* owner = state->owner)
-                                owner->publishPageRender (generation, page, std::move (image));
-                        });
-                }
-                catch (const std::bad_alloc&)
-                {
-                }
+                state->postRender (generation, page, std::move (image));
             }
         });
     }
@@ -757,23 +871,7 @@ void PdfViewComponent::requestSearchResults()
                 if (state->searchGeneration.load (std::memory_order_acquire) != generation)
                     continue;
 
-                try
-                {
-                    (void) juce::MessageManager::callAsync (
-                        [state, generation, pageIndex, results = std::move (results)] () mutable
-                        {
-                            if (state->searchGeneration.load (std::memory_order_acquire) != generation)
-                                return;
-
-                            if (auto* owner = state->owner)
-                                owner->publishSearchResults (generation,
-                                                             pageIndex,
-                                                             std::move (results));
-                        });
-                }
-                catch (const std::bad_alloc&)
-                {
-                }
+                state->postSearch (generation, pageIndex, std::move (results));
             }
         });
     }

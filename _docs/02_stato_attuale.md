@@ -66,7 +66,7 @@ renderer concreti.
 
 `PdfViewComponent`:
 - ownership asincrona tramite `std::shared_ptr<PdfDocument>`;
-- render/search off Message Thread;
+- render/search off Message Thread; publication via cancellable `AsyncUpdater`;
 - richieste coalesced;
 - cache con generation token;
 - navigazione UI 1-based;
@@ -144,7 +144,7 @@ L'interim rename `AyraLegacyPDFView`, introdotto per eliminare la collisione con
 - document/raster/text/query budgets;
 - stress multi-instance PDFium;
 - ASan/UBSan dove disponibili;
-- TSan sul protocollo worker/widget e PDFium, se compatibile.
+- TSan sul protocollo worker/widget e PDFium, se compatibile; teardown widget/plugin con job in-flight.
 
 ## V01 preparation
 
