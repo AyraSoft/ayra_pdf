@@ -499,7 +499,7 @@ public:
             expectEquals (listener.closed, 0);
             expectEquals (callbackClosed, 0);
 
-            view.setCurrentPageZoom (2.0f, { 0.0f, 0.0f });
+            view.setCurrentPageZoom (2.0f, juce::Point<float> { 0.0f, 0.0f });
             expectWithinAbsoluteError (view.getCurrentPageZoom(), 2.0f, 0.0001f);
             view.setPageNumber (2);
             expectEquals (view.getCurrentPageOnScreen(), 2);
