@@ -103,8 +103,7 @@ function(ayra_pdf_link_pdfium target)
         endif()
 
         set(AYRA_PDF_PROVISIONED_DIR
-            "${AYRA_PDF_MODULE_ROOT}/third_party/pdfium/"
-            "${AYRA_PDF_PLATFORM}/${AYRA_PDF_ARCH}")
+            "${AYRA_PDF_MODULE_ROOT}/third_party/pdfium/${AYRA_PDF_PLATFORM}/${AYRA_PDF_ARCH}")
     endif()
 
     if(NOT ANDROID)
@@ -136,6 +135,13 @@ function(ayra_pdf_link_pdfium target)
             "PDFium runtime is not provisioned at ${AYRA_PDF_RUNTIME_FILE}. "
             "Run ayra_pdf/scripts/setup_pdfium for ${AYRA_PDF_ASSET_KEY}.")
     endif()
+
+    # Consumers can freeze the exact selected runtime and its pin manifest.
+    # These metadata properties do not change platform linkage or deployment.
+    set_property(TARGET "${target}" PROPERTY
+        AYRA_PDF_RUNTIME_FILE "${AYRA_PDF_RUNTIME_FILE}")
+    set_property(TARGET "${target}" PROPERTY
+        AYRA_PDF_RUNTIME_MANIFEST "${AYRA_PDF_MANIFEST}")
 
     if(WIN32)
         string(JSON AYRA_PDF_LINK_ARCHIVE_PATH
