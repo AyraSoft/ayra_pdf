@@ -136,6 +136,13 @@ function(ayra_pdf_link_pdfium target)
             "Run ayra_pdf/scripts/setup_pdfium for ${AYRA_PDF_ASSET_KEY}.")
     endif()
 
+    # Consumers can freeze the exact selected runtime and its pin manifest.
+    # These metadata properties do not change platform linkage or deployment.
+    set_property(TARGET "${target}" PROPERTY
+        AYRA_PDF_RUNTIME_FILE "${AYRA_PDF_RUNTIME_FILE}")
+    set_property(TARGET "${target}" PROPERTY
+        AYRA_PDF_RUNTIME_MANIFEST "${AYRA_PDF_MANIFEST}")
+
     if(WIN32)
         string(JSON AYRA_PDF_LINK_ARCHIVE_PATH
             ERROR_VARIABLE AYRA_PDF_LINK_JSON_ERROR
