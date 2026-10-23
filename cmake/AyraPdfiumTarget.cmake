@@ -103,8 +103,7 @@ function(ayra_pdf_link_pdfium target)
         endif()
 
         set(AYRA_PDF_PROVISIONED_DIR
-            "${AYRA_PDF_MODULE_ROOT}/third_party/pdfium/"
-            "${AYRA_PDF_PLATFORM}/${AYRA_PDF_ARCH}")
+            "${AYRA_PDF_MODULE_ROOT}/third_party/pdfium/${AYRA_PDF_PLATFORM}/${AYRA_PDF_ARCH}")
     endif()
 
     if(NOT ANDROID)
